@@ -1,0 +1,334 @@
+================================================================================
+  NAV MAP INTELLIGENCE — FEATURE OVERVIEW
+  Nexus Legacy Season 0
+  Current Version: 2.0.0
+================================================================================
+
+
+OVERVIEW
+--------
+The NAV Map Intelligence toolset is a suite of three interconnected tools built
+around live Nexus Legacy galaxy data pulled directly from the game API. Together
+they allow alliance members to filter, analyze, and visualize the explored
+galaxy for strategic purposes — colonization scouting, rival tracking, resource
+planning, station control, and PvP threat assessment.
+
+The toolset consists of:
+
+  nl_dumper.py            API puller — pulls live galaxy data directly from
+                          the game and writes a clean nexus-map-clean.json.
+                          Replaces the old parse_nexus_map.py pipeline.
+
+  nl_discord_summary.py   CLI filter tool — queries the database and outputs
+                          formatted reports for posting in Discord.
+
+  nexus-map-viewer.html   Interactive GUI — browser-based galaxy map with
+                          live filters, system popups, alliance heatmaps,
+                          station rendering, sector highlighting, and
+                          threat assessment overlay.
+
+
+--------------------------------------------------------------------------------
+TOOL 1: nl_dumper.py
+--------------------------------------------------------------------------------
+
+PURPOSE
+  Pulls galaxy data directly from the Nexus Legacy game API and writes a clean,
+  structured nexus-map-clean.json ready for immediate use with the map viewer
+  and discord script. No intermediate parse step needed.
+
+SETUP
+  Create nl_config.txt in the same directory as the script:
+      token=your_nexus_token_here
+
+  To get your token: open Edge DevTools (F12) → Application tab →
+  Cookies → s0.nexuslegacy.space → copy the nexus_token value.
+
+  Token expiry: approximately 60 days. Refresh when expired.
+
+USAGE
+  python nl_dumper.py              Full pull (all arms, all sectors)
+  python nl_dumper.py --test       Test pull (1 sector, confirms endpoints work)
+  python nl_dumper.py --fresh      Wipe checkpoint and start over
+
+OUTPUT FILES
+  nexus-map-clean.json        Final clean database (load this in the viewer)
+  nl_dumper_progress.json     Checkpoint file — safe to delete after success
+
+RESUMABLE
+  If interrupted, run again. Completed sectors are skipped automatically.
+  Use --fresh to force a full new pull from scratch.
+
+PULL CONFIG
+  At the top of nl_dumper.py is a PULL config block. Set True/False to
+  enable or disable each data type:
+
+      'galaxy_map'        All system names, coords, zones, hasColonies flag
+      'sectors'           Sector metadata per arm
+      'colonized_planets' Planets + moons for colonized systems only
+      'asteroid_fields'   Asteroid fields in colonized systems
+      'stations'          Station ownership, shield, building levels
+      'wormholes'         Wormhole locations (disabled — future use)
+      'pirate_camps'      NPC pirate camps (disabled — future use)
+      'system_debris'     Debris fields (disabled — future use)
+      'market_hubs'       Public trading hubs (disabled — future use)
+      'all_planets'       Pull planets for ALL systems, not just colonized
+                          Warning: ~14,000 additional API calls
+
+PULL ARCHITECTURE
+  Phase 1 — Galaxy map (one call): all system coords, zones, hasColonies
+  Phase 2 — Per arm → sectors (6 calls): zone, visibility, colony counts
+  Phase 3 — Per visible sector → systems + colonized planets + stations
+             Only sectors with visibility=full are pulled
+             Only systems with hasColonies=True get planet detail calls
+             Stations pulled per sector (5 per sector, fixed positions)
+  Checkpoint saved every 25 sectors.
+
+ESTIMATED PULL TIME
+  Approximately 10-20 minutes for a full pull depending on server response
+  and the number of colonized systems in explored space.
+
+OUTPUT STRUCTURE
+  {
+    meta: {
+      capturedAt, generatedBy, universe, testMode, pullConfig,
+      systemCount, sectorCount, planetCount, moonCount,
+      asteroidFieldCount, stationCount,
+      authUserId, authUsername
+    },
+    sectors:  [ { id, armId, index, name, securityZone, visibility,
+                  systemCount, colonizedPlanets, controllerAllianceId } ],
+    systems:  [ {
+      id, name, armId, sectorId, securityZone, isPvpZone,
+      starType, visibility, x, y, hasColonies, colonizedCount,
+      planetCount, isMarketHub, isRiftCore, hasAllianceMarker,
+      planets: [
+        { id, name, systemId, position, planetType, size, temperature,
+          securityZone, userId, colonizedAt, isHomeworld,
+          ownerName, ownerRace, ownerAllianceTag,
+          ownerIsVacationMode, shieldReinforcedUntil,
+          moons: [
+            { id, name, parentPlanetId, moonType, size, position,
+              buildingSlots, userId, ownerName, colonizedAt }
+          ] }
+      ],
+      asteroidFields: [
+        { id, name, systemId, fieldType, richness,
+          remainingResources, totalResources,
+          controllerName, controllerUserId, allianceId }
+      ],
+      stations: [
+        { id, name, systemId, sectorId, systemName,
+          ownerAllianceId, ownerAllianceTag, ownerAllianceName,
+          capturedByUserId, capturingAllianceId, capturingAllianceTag,
+          captureEndsAt, shieldHp, shieldMaxHp, shieldReinforcedUntil,
+          garrison, buildings: { dock, shield, turret, storage },
+          createdAt }
+      ]
+    } ],
+    stations:    [ ... flat list of all stations across all sectors ],
+    wormholes:   [],
+    marketHubs:  [],
+    pirateCamps: [],
+    systemDebris:[]
+  }
+
+PRIVACY NOTES
+  nexus-map-clean.json contains in-game usernames, alliance tags, and
+  colony locations for all players in explored space. It does NOT contain
+  email addresses, Steam IDs, or account credentials.
+  authUserId and authUsername identify the account that ran the pull.
+  Share only with players you trust with this level of game intelligence.
+
+
+--------------------------------------------------------------------------------
+TOOL 2: nl_discord_summary.py
+--------------------------------------------------------------------------------
+
+PURPOSE
+  Command-line filter tool that reads nexus-map-clean.json and outputs
+  formatted system reports suitable for pasting into Discord.
+
+USAGE
+  python nl_discord_summary.py <file> [flags]
+
+FLAGS
+  --arm <name>            Filter by galactic arm (alpha/beta/gamma/delta/
+                          epsilon/zeta). Required when using --sector.
+  --sector <number>       Filter to a specific in-game sector number.
+                          Requires --arm.
+  --type <type>           Filter by planet type.
+                          Values: terra, rocky, gas_giant, ice, volcanic,
+                          crystalline
+  --zone <zone>           Filter by security zone.
+                          Values: open, sentinel, dead, rift
+  --pvp                   Exclude sentinel space entirely. Shows only
+                          systems in PvP-enabled zones (open, dead, rift).
+                          Stackable with all other flags.
+  --min-slots <n>         Minimum building slot count on at least one planet.
+  --colonized             Show only systems with at least one colonized planet.
+  --alliance <tag>        Show only systems with a colony owned by the
+                          specified alliance tag (case-insensitive).
+  --list-alliances        Print all known alliance tags sorted by colony
+                          count, then exit.
+  --field-type <type>     Filter by asteroid field type.
+                          Values: ore, ice, gas, dark, plasma, quantum
+  --min-richness <n>      Minimum asteroid field richness value.
+  --sort-slots            Sort results by highest planet slot count descending.
+  --top <n>               Maximum systems to display (default: 25).
+
+EXAMPLE QUERIES
+  All PvP systems in Epsilon Sector 47:
+    python nl_discord_summary.py nldb.json --pvp --arm epsilon --sector 47
+
+  High-slot terra planets in open space:
+    python nl_discord_summary.py nldb.json --zone open --type terra --min-slots 18
+
+  All SWORD alliance colonies in PvP zones:
+    python nl_discord_summary.py nldb.json --pvp --alliance SWORD
+
+  Best ore fields in Epsilon arm:
+    python nl_discord_summary.py nldb.json --arm epsilon --field-type ore
+      --min-richness 2.0 --sort-slots
+
+  Alliance index:
+    python nl_discord_summary.py nldb.json --list-alliances
+
+OUTPUT
+  Formatted Discord code block. A .txt file is also saved automatically
+  alongside the input file.
+
+SLOT CALCULATION
+  Non-gas-giant: slots = floor(size / 10)
+  Gas giant:     slots = floor(size / 10 * 0.3)
+  Moon slots use game-reported buildingSlots field.
+
+ZONE / PVP NOTES
+  PvP is disabled in Sentinel space only. Open, Dead, and Rift zones are
+  all PvP-enabled. The --pvp flag is the fastest way to scope queries to
+  contested space.
+
+
+--------------------------------------------------------------------------------
+TOOL 3: nexus-map-viewer.html
+--------------------------------------------------------------------------------
+
+PURPOSE
+  Self-contained browser-based galaxy map. No server, no installation,
+  no internet connection required after download. Open the HTML file in
+  any browser and load nexus-map-clean.json to render the full explored
+  galaxy with live filters, system detail popups, station rendering,
+  sector highlighting, and threat assessment.
+
+  Designed to be shared with allied players. Each recipient configures
+  their own home alliance via the settings panel — no code editing needed.
+
+LOADING DATA
+  Click the load zone or drag and drop nexus-map-clean.json onto it.
+  All data is processed locally — nothing is uploaded anywhere.
+
+MAP NAVIGATION
+  Drag to pan · Scroll wheel to zoom · Pinch to zoom on touch devices
+  +/- buttons bottom-right · House button resets to full galaxy view
+  System name labels appear at high zoom levels
+
+DOT COLORS (SECURITY ZONES)
+  Green    Sentinel space (PvP disabled — outermost ring)
+  Orange   Open space (PvP enabled — middle ring)
+  Red      Dead space (PvP enabled — inner ring)
+  Purple   The Rift (PvP enabled — galactic center, single system)
+  Gray     Unscanned / no zone data
+
+STATION RENDERING
+  Stations replace their system's dot with a diamond shape at the same
+  map position.
+
+  Home alliance station   Large diamond in home alliance color with radial
+                          glow halo and white center dot. Unmissable.
+  Rival/neutral station   Standard diamond in zone color. White center
+                          dot if owned by another alliance.
+  Sentinel station        Faint outline diamond only (not contestable,
+                          lore flavor — not tactical).
+  Capture in progress     Red outer ring on the diamond regardless of owner.
+
+HOME ALLIANCE DISPLAY
+  Systems colonized by the home alliance render as bright colored dots
+  with a radial glow, overriding zone color. Always visible regardless
+  of active filters — dims slightly when outside filter scope but never
+  disappears entirely.
+
+ALLIANCE HEATMAP
+  When Alliance Tag filter is active, a heatmap renders beneath dots.
+  Overlapping blobs accumulate via screen blend, highlighting clusters.
+  Home alliance gets its configured color; all others use amber.
+
+SECTOR HIGHLIGHTING
+  Click any system to reveal the shape of its sector. All other systems
+  sharing the same sector receive a soft white glow ring beneath their
+  dot, naturally outlining the sector boundary. Click away to dismiss.
+
+FILTERS (all live-update map and results list simultaneously)
+  Arm                   Galactic arm selector
+  Sector                Sector number within the selected arm
+  Security Zone         Dropdown color-coded to match map dots
+  Planet Type           Systems containing a specific planet type
+  Min Slots             Minimum building slots on at least one planet
+  Field Type            Asteroid field type present in the system
+  Min Richness          Minimum asteroid field richness
+  Alliance Tag          Systems with a colony owned by this alliance tag
+  Player Name           Partial name search across all colony owners
+  Colonized Only        Default on — shows only settled systems
+  Unaffiliated Only     Systems with a colony owned by a tagless player
+
+THREAT ASSESSMENT PANEL (collapsible ⚔)
+  Proximity circles around home alliance colonies with rival highlights.
+  Only scans PvP zones — sentinel excluded.
+
+  Reference Points    Home Alliance colonies as origin points
+  Radius Slider       0–500 in steps of 25 coordinate units
+                      (~1 sector width ≈ 60–120 units)
+  Threat Summary      Live count of rival systems in range by zone
+  Popup Distance      Exact distance to nearest home colony + IN RANGE flag
+
+ALLIANCE SETTINGS PANEL (collapsible ⚙)
+  Home Alliance Tag   In-game tag (e.g. NAV, VAN)
+  Alliance Color      Hex + color picker, kept in sync
+  Saves to browser localStorage — persists across sessions.
+  Header, legend, filter placeholder all update automatically.
+
+SHARING
+  Distribute nexus-map-viewer.html and nexus-map-clean.json together.
+  Recipients open the HTML file locally and configure their alliance
+  via the settings panel.
+
+
+--------------------------------------------------------------------------------
+DATA FLOW
+--------------------------------------------------------------------------------
+
+  [Nexus Legacy Game API]
+        |
+        v
+  nl_dumper.py  (requires nl_config.txt with auth token)
+        |
+        v
+  nexus-map-clean.json
+        |
+        +-----> nl_discord_summary.py  -->  Discord report
+        |
+        +-----> nexus-map-viewer.html  -->  Browser map
+
+
+--------------------------------------------------------------------------------
+SYSTEM REQUIREMENTS
+--------------------------------------------------------------------------------
+
+  nl_dumper.py            Python 3.8+, requests library (pip install requests)
+  nl_discord_summary.py   Python 3.8+, no external dependencies
+  nexus-map-viewer.html   Any modern browser (Chrome, Firefox, Edge, Safari)
+                          No internet connection required after file download
+
+
+================================================================================
+  END OF DOCUMENT
+================================================================================

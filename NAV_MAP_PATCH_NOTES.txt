@@ -1,0 +1,211 @@
+================================================================================
+  NAV MAP INTELLIGENCE — PATCH NOTES
+  Nexus Legacy Season 0
+================================================================================
+
+
+--------------------------------------------------------------------------------
+v2.0.0  —  Live API Dumper & Station Support
+--------------------------------------------------------------------------------
+
+OVERVIEW
+  Major version bump. The toolset is no longer dependent on Azrael's third-
+  party browser extension. nl_dumper.py pulls galaxy data directly from the
+  game API, producing a cleaner output in fewer steps. parse_nexus_map.py
+  is retired. Stations are now a first-class feature in the map viewer.
+
+NEW: nl_dumper.py
+  Replaces the parse_nexus_map.py + raw export workflow entirely.
+  Pulls directly from the Nexus Legacy game API using your auth token.
+  Auth token stored in nl_config.txt (never in the script itself).
+  Token valid for approximately 60 days before refresh is needed.
+
+  Pull architecture:
+    Phase 1 — Galaxy map: all systems, coords, zones in one call
+    Phase 2 — Per-arm sector lists (6 calls total)
+    Phase 3 — Per visible sector: systems, colonized planet detail, stations
+               Skips outline/unvisited sectors automatically
+               Only hits planet detail endpoint for colonized systems
+               Estimated runtime: 10-20 minutes for full pull
+
+  Resumable: checkpoints every 25 sectors to nl_dumper_progress.json.
+  If interrupted, re-run and it picks up where it stopped.
+
+  Three run modes:
+    python nl_dumper.py          Full pull
+    python nl_dumper.py --test   Single sector test, writes nexus-map-TEST.json
+    python nl_dumper.py --fresh  Wipe checkpoint, start fresh
+
+  PULL config block at top of script — flip True/False per data type:
+    colonized_planets, asteroid_fields, stations (all on by default)
+    wormholes, pirate_camps, system_debris, market_hubs (off, future use)
+    all_planets (off — enables full planet detail for every system,
+                 adds ~14,000 API calls, use only when needed)
+
+  Output format improvements vs old parser:
+    + Stations nested inside their parent system
+    + colonizedCount per system (live, not derived)
+    + isMarketHub and isRiftCore flags on systems
+    + Moon position field included
+    + systemId correctly injected on planets (API doesn't return it)
+    + ownerAvatarUrl and ownerPortraitFrame stripped
+    + Moons correctly parsed from separate API array and nested under planets
+    + sector array included at top level with zone/visibility/colony counts
+    + stationCount in meta
+
+RETIRED: parse_nexus_map.py
+  No longer needed. nl_dumper.py produces a clean nested JSON directly
+  from the API with no intermediate raw export required.
+
+CHANGES: nexus-map-viewer.html
+  * Format detection updated — now expects nl_dumper.py output exclusively.
+    Old parse_nexus_map.py format no longer supported.
+  * Stations count added to header meta bar.
+  * Station rendering — station systems now display as diamonds instead of
+    dots, replacing the dot entirely at the system's map position:
+      Home alliance station  Large home-color diamond with radial glow
+                             halo and white center dot. Unmissable.
+      Rival/neutral station  Standard zone-colored diamond. White center
+                             dot if owned by a rival alliance.
+      Sentinel station       Faint outline only — not contestable.
+      Capture in progress    Red outer ring on the diamond.
+  * Station popup block — clicking a station system shows station name,
+    shield percentage (color coded), owner alliance, active capture state,
+    and building upgrade levels.
+  * Station added to legend with amber/gray/sentinel explanation.
+  * Sector highlighting — clicking any system reveals the rough shape of
+    its sector. All systems sharing the same sectorId receive a soft white
+    glow ring beneath their dot. Dismissed on click-away.
+  * Home alliance stations super prominent — larger diamond, glow halo,
+    home alliance color overrides zone color. Clearly distinguishable from
+    rival and neutral stations at all zoom levels.
+
+CHANGES: nl_discord_summary.py
+  * extract_data() updated to handle nl_dumper.py nested format as the
+    primary format. Old flat export format retained as fallback.
+
+
+--------------------------------------------------------------------------------
+v1.4.0  —  Threat Assessment & Filter Expansion
+--------------------------------------------------------------------------------
+
+OVERVIEW
+  Introduces the Threat Assessment panel, player name search, unaffiliated
+  player filtering, and colonized-first default view.
+
+CHANGES: nexus-map-viewer.html
+  * Threat Assessment panel — collapsible sidebar section (⚔). Contains
+    reference point toggle, proximity radius slider (0–500, steps of 25),
+    live threat summary broken down by Dead/Open, and clear button.
+  * Threat radius circles — soft red fill with dashed ring around each
+    home alliance colony. Rival PvP-zone systems within range get a red
+    highlight ring and glow. Sentinel excluded.
+  * Popup distance line — when radius active, shows exact distance to
+    nearest home colony and IN RANGE flag.
+  * Player Name filter — partial, case-insensitive search on ownerName.
+  * Colonized Only — checkbox defaulting to checked. Shows only settled
+    systems on load. Clear All Filters leaves it on.
+  * Unaffiliated Only — systems with a tagless colonized planet.
+  * Zone dropdown icons corrected: 🟢 Sentinel, 🟠 Open, 🔴 Dead, 🟣 Rift.
+  * Panel toggle pattern unified — Alliance Settings and Threat Assessment
+    share CSS classes for visual consistency.
+
+
+--------------------------------------------------------------------------------
+v1.3.0  —  Zone Data Fix & PvP Filtering
+--------------------------------------------------------------------------------
+
+OVERVIEW
+  Corrects a data gap where all 66 NAV alliance-marked systems reported
+  null security zones. Introduces --pvp flag across the toolset.
+
+CHANGES: parse_nexus_map.py
+  * Zone data fix — builds zone lookup from full galaxyMap and backfills
+    null securityZone values on alliance-marked systems.
+  * Planet zone backfill — planets inherit securityZone from parent system.
+  * New field: isPvpZone boolean on every system.
+
+CHANGES: nl_discord_summary.py
+  * New flag: --pvp — filters to open/dead/rift only, excludes sentinel.
+
+IMPACT
+  NAV zone breakdown corrected: 11 dead, 23 open, 32 sentinel.
+  Player colonies corrected:
+    DROKNAR (E9-33)   sentinel — homeworld, PvP protected
+    ATLAS (B32-41)    open — exposed
+    VEILDRIS (E47-15) dead — exposed, frontier position
+
+
+--------------------------------------------------------------------------------
+v1.2.0  —  Configurable Home Alliance
+--------------------------------------------------------------------------------
+
+OVERVIEW
+  Home alliance rendering configurable via GUI — shareable with allied
+  players without code editing.
+
+CHANGES: nexus-map-viewer.html
+  * Alliance Settings panel (⚙ collapsible) with Home Alliance Tag and
+    Alliance Color fields (hex + color picker in sync).
+  * Settings persist to localStorage across sessions.
+  * CONFIG block in script sets distribution default.
+  * Header title, legend label, filter placeholder update dynamically.
+  * Home alliance dots always visible regardless of active filters.
+  * Display Name field removed — tag drives all labels directly.
+
+
+--------------------------------------------------------------------------------
+v1.1.1  —  Zone Color Corrections
+--------------------------------------------------------------------------------
+
+CHANGES: nexus-map-viewer.html
+  * Corrected zone color mapping:
+      Sentinel (outermost)  green   #4ade80
+      Open (middle)         orange  #fb923c
+      Dead (inner)          red     #f87171
+      Rift (center)         purple  #a78bfa
+  * ZONE_COLOR JS object and CSS variables brought into agreement.
+  * Legend reordered Sentinel first.
+
+
+--------------------------------------------------------------------------------
+v1.1.0  —  Alliance Heatmap & Home Alliance Visibility
+--------------------------------------------------------------------------------
+
+CHANGES: nexus-map-viewer.html
+  * Alliance heatmap — screen-blend radial blobs per matching system when
+    Alliance Tag filter is active. Clusters accumulate brightness.
+  * Home alliance dot rendering overhauled — bright colored dot with radial
+    glow halo, overrides zone color, always renders.
+
+
+--------------------------------------------------------------------------------
+v1.0.0  —  Initial Release
+--------------------------------------------------------------------------------
+
+OVERVIEW
+  Initial working toolset built around Azrael's third-party browser
+  extension export.
+
+COMPONENTS
+  parse_nexus_map.py (now retired in v2.0.0)
+    Converted the raw nexusLegacyGalaxyViews export (~154 MB) into a
+    clean nested JSON (~107 MB) covering 13,694 systems, 93,440 planets,
+    132,743 moons, 18,689 asteroid fields.
+
+  nl_discord_summary.py
+    CLI query tool with arm, sector, planet type, zone, slots, colonized,
+    alliance, list-alliances, field type, richness, sort-slots, top-N.
+    Outputs Discord code blocks.
+
+  nexus-map-viewer.html
+    Single-file browser app. Drag-and-drop JSON loading, pan/zoom canvas,
+    live filters, system popups, results list, zone-colored dots.
+
+  Known issue in v1.0.0: securityZone null on all 66 NAV alliance-marked
+  systems due to API response gap. Fixed in v1.3.0.
+
+
+================================================================================
+  END OF PATCH NOTES
+================================================================================
