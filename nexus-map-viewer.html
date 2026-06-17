@@ -613,6 +613,40 @@
     text-align: center;
     line-height: 1.7;
   }
+
+  /* ── Loading spinner ─────────────────────────────────────────────────────── */
+  #loading-state {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    pointer-events: none;
+  }
+  #loading-state.visible { display: flex; }
+  .spinner {
+    width: 36px;
+    height: 36px;
+    border: 2px solid var(--border2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading-state p {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align: center;
+    line-height: 1.7;
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.5; }
+    50%       { opacity: 1.0; }
+  }
 </style>
 </head>
 <body>
@@ -811,6 +845,10 @@
     <div id="empty-state">
       <div class="big">🌌</div>
       <p>Load a nexus-map-clean.json file<br>to render the galaxy.</p>
+    </div>
+    <div id="loading-state">
+      <div class="spinner"></div>
+      <p>Fetching galaxy data…<br>This may take a moment.</p>
     </div>
     <div id="map-controls">
       <button class="map-btn" id="btn-zoom-in" title="Zoom in">+</button>
@@ -1895,9 +1933,14 @@ resizeCanvas();
 
 // ── Auto-fetch map data on load ───────────────────────────────────────────────
 (function fetchDefaultData() {
-  const loadZoneEl = document.getElementById('load-zone');
-  const statusEl   = loadZoneEl.querySelector('p');
+  const loadZoneEl  = document.getElementById('load-zone');
+  const statusEl    = loadZoneEl.querySelector('p');
+  const loadingEl   = document.getElementById('loading-state');
+  const emptyEl     = document.getElementById('empty-state');
 
+  // Show spinner, hide the static empty state
+  emptyEl.style.display = 'none';
+  loadingEl.classList.add('visible');
   statusEl.innerHTML = '<strong>Loading map data…</strong><br>Fetching nexus-map-clean.json';
 
   fetch('nexus-map-clean.json')
@@ -1906,11 +1949,14 @@ resizeCanvas();
       return res.json();
     })
     .then(data => {
+      loadingEl.classList.remove('visible');
       ingestData(data);
       statusEl.innerHTML = '<strong>Load local override</strong><br>Click or drag & drop a nexus-map-clean.json';
     })
     .catch(err => {
       console.warn('Auto-fetch failed:', err);
+      loadingEl.classList.remove('visible');
+      emptyEl.style.display = 'flex';
       statusEl.innerHTML = '<strong>Load nexus-map-clean.json</strong><br>Click or drag & drop';
     });
 })();
