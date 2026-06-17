@@ -639,7 +639,7 @@
 
     <div id="load-zone" onclick="document.getElementById('file-input').click()">
       <div class="icon">🗂️</div>
-      <p><strong>Load nexus-map-clean.json</strong><br>Click or drag & drop</p>
+      <p><strong>Load local override</strong><br>Click or drag & drop a nexus-map-clean.json</p>
     </div>
     <input type="file" id="file-input" accept=".json">
 
@@ -1892,6 +1892,28 @@ document.getElementById('btn-reset').addEventListener('click', resetView);
 const ro = new ResizeObserver(resizeCanvas);
 ro.observe(mapArea);
 resizeCanvas();
+
+// ── Auto-fetch map data on load ───────────────────────────────────────────────
+(function fetchDefaultData() {
+  const loadZoneEl = document.getElementById('load-zone');
+  const statusEl   = loadZoneEl.querySelector('p');
+
+  statusEl.innerHTML = '<strong>Loading map data…</strong><br>Fetching nexus-map-clean.json';
+
+  fetch('nexus-map-clean.json')
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+    .then(data => {
+      ingestData(data);
+      statusEl.innerHTML = '<strong>Load local override</strong><br>Click or drag & drop a nexus-map-clean.json';
+    })
+    .catch(err => {
+      console.warn('Auto-fetch failed:', err);
+      statusEl.innerHTML = '<strong>Load nexus-map-clean.json</strong><br>Click or drag & drop';
+    });
+})();
 </script>
 </body>
 </html>
