@@ -236,7 +236,18 @@
   .result-meta .zone-dead    { color: var(--dead); }
   .result-meta .zone-rift    { color: var(--rift); }
 
-  /* ── Map area ─────────────────────────────────────────────────────────────── */
+  /* ── Right sidebar (results) ─────────────────────────────────────────────── */
+  #results-sidebar {
+    width: 200px;
+    flex-shrink: 0;
+    background: var(--bg2);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Map area ──────────────────────────────────────────────────────────────*/
   #map-area {
     flex: 1;
     position: relative;
@@ -831,12 +842,6 @@
       <div id="settings-saved"></div>
     </div>
 
-    <!-- Results list -->
-    <div id="results-header">
-      Systems: <span id="results-count">—</span>
-    </div>
-    <div id="results-panel"></div>
-
   </div>
 
   <!-- Map -->
@@ -864,6 +869,15 @@
       <div id="popup-body"></div>
     </div>
   </div>
+
+  <!-- Results sidebar -->
+  <div id="results-sidebar">
+    <div id="results-header">
+      Systems: <span id="results-count">—</span>
+    </div>
+    <div id="results-panel"></div>
+  </div>
+
 </div>
 
 <script>
