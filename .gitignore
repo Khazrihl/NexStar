@@ -1,2 +1,7 @@
 nl_config.txt
 nl_dumper_progress.json
+python/
+python/
+_BACKUP_nexus-map-clean/
+*.zip
+map/nexus-map-clean.json
