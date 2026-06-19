@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NexStar — Nexus Legacy Intelligence Suite</title>
+  <style>
+    :root {
+      --bg:      #0e1117;
+      --bg2:     #161b22;
+      --border:  #21262d;
+      --accent:  #e8a838;
+      --text:    #c9d1d9;
+      --text-dim:#8b949e;
+      --green:   #4ade80;
+      --font:    'Segoe UI', system-ui, sans-serif;
+      --font-mono: 'Consolas', 'Courier New', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 720px;
+      display: flex;
+      flex-direction: column;
+      gap: 40px;
+    }
+
+    /* ── Header ── */
+    .header {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .header .logo {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .header h1 {
+      font-size: 36px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.5px;
+    }
+
+    .header h1 span {
+      color: var(--accent);
+    }
+
+    .header p {
+      font-size: 14px;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+
+    .wip-banner {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 4px 12px;
+      background: rgba(232, 168, 56, 0.1);
+      border: 1px solid rgba(232, 168, 56, 0.3);
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+    }
+
+    /* ── Tool cards ── */
+    .tools {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px 28px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .card:hover {
+      border-color: var(--accent);
+      background: #1a2030;
+    }
+
+    .card-icon {
+      font-size: 32px;
+      flex-shrink: 0;
+      width: 48px;
+      text-align: center;
+    }
+
+    .card-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .tag {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 3px;
+      letter-spacing: 0.08em;
+      font-weight: 400;
+    }
+
+    .tag-wip {
+      background: rgba(232, 168, 56, 0.12);
+      border: 1px solid rgba(232, 168, 56, 0.3);
+      color: var(--accent);
+    }
+
+    .card-desc {
+      font-size: 13px;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+
+    .card-arrow {
+      font-size: 18px;
+      color: var(--text-dim);
+      flex-shrink: 0;
+      transition: color 0.15s, transform 0.15s;
+    }
+
+    .card:hover .card-arrow {
+      color: var(--accent);
+      transform: translateX(3px);
+    }
+
+    /* ── Footer ── */
+    .footer {
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-dim);
+      line-height: 1.8;
+    }
+
+    .footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <div class="header">
+      <div class="logo">Nexus Legacy · Season 0 · NAV Alliance</div>
+      <h1>Nex<span>Star</span></h1>
+      <p>Galaxy intelligence suite for Nexus Legacy.<br>Live data pulled directly from the game API.</p>
+      <div class="wip-banner">⚠ All tools are works in progress</div>
+    </div>
+
+    <div class="tools">
+
+      <a class="card" href="map/nexus-map-viewer.html">
+        <div class="card-icon">🌌</div>
+        <div class="card-body">
+          <div class="card-title">
+            Galaxy Map
+            <span class="tag tag-wip">WIP</span>
+          </div>
+          <div class="card-desc">
+            Interactive browser-based galaxy map. Filter by zone, alliance, planet type, slots, and more.
+            Heatmaps, threat assessment, station rendering, sector highlighting.
+            Data auto-loads on open — no setup required.
+          </div>
+        </div>
+        <div class="card-arrow">→</div>
+      </a>
+
+      <a class="card" href="market/nexus-market-viewer.html">
+        <div class="card-icon">📊</div>
+        <div class="card-body">
+          <div class="card-title">
+            Market Terminal
+            <span class="tag tag-wip">WIP</span>
+          </div>
+          <div class="card-desc">
+            Buyer and seller matching tool for the in-game market.
+            Find trades, compare against NPC rates, and identify the best deals
+            across resource types.
+          </div>
+        </div>
+        <div class="card-arrow">→</div>
+      </a>
+
+    </div>
+
+    <div class="footer">
+      Built by Khazrihl · NAV Alliance ·
+      <a href="https://github.com/Khazrihl/NexStar" target="_blank">GitHub</a>
+    </div>
+
+  </div>
+</body>
+</html>
