@@ -11,3 +11,9 @@ _BACKUP_nexus-map-clean/
 IDEAS.txt
 run_nl_dumper.bat
 map/nexus-map-clean.json
+python/
+_BACKUP_nexus-map-clean/
+*.zip
+IDEAS.txt
+run_nl_dumper.bat
+map/nexus-map-clean.json
