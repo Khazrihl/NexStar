@@ -4,9 +4,17 @@ Pulls galaxy data directly from the game API and writes a clean
 nexus-map-clean.json ready for use with the map viewer and discord script.
 
 Usage:
-    python nl_dumper.py              Full pull
+    python nl_dumper.py              Update pull (colonized only, merged with existing)
     python nl_dumper.py --test       Test pull (1 sector only, confirms endpoints)
     python nl_dumper.py --fresh      Delete progress file and start over
+
+    Planet-detail scope (overrides the PULL['all_planets'] default):
+    python nl_dumper.py --all-planets     Pull planet detail for ALL systems
+                                          (full coverage; ~14,000 extra API calls)
+    python nl_dumper.py --colonized-only  Pull planet detail for colonized systems only
+
+    Merge:
+    python nl_dumper.py --no-merge   Do NOT backfill from the existing output
 
 Config:
     nl_config.txt must exist in the same directory. Format:
@@ -19,6 +27,14 @@ Output:
 Resume:
     If interrupted, just run again. Completed sectors are skipped.
     Use --fresh to start a full new pull from scratch.
+
+Update workflow:
+    A colonized-only pull only fetches planet detail for colonized systems. By
+    default the run then MERGES with the existing nexus-map-clean.json, backfilling
+    planet data for every system it did not re-pull, so uncolonized planet
+    geography from an earlier --all-planets pull is preserved. To (re)establish
+    that full coverage, run once with --all-planets; after that, plain update
+    pulls keep it via merge. Use --no-merge to force a clean rebuild.
 """
 
 import json
@@ -47,8 +63,11 @@ PULL = {
     'system_debris':     False,  # Debris fields
     'market_hubs':       False,  # Public trading hub locations
 
-    # Full detail — expensive, only use when you need uncolonized planet data
-    'all_planets':       True,  # Pull planets for ALL systems, not just colonized
+    # Full detail — expensive, only use when you need uncolonized planet data.
+    # Default is colonized-only for fast updates; the merge step (see below)
+    # preserves uncolonized planet geography from a prior --all-planets pull.
+    # Override per-run with --all-planets / --colonized-only.
+    'all_planets':       False,  # Pull planets for ALL systems, not just colonized
                                  # Warning: ~14,000 additional API calls
 }
 
@@ -165,6 +184,46 @@ def load_progress():
 def save_progress(progress):
     with open(PROGRESS_FILE, 'w') as f:
         json.dump(progress, f, separators=(',', ':'))
+
+# ── Baseline merge ────────────────────────────────────────────────────────────
+def load_baseline():
+    """Load the existing output JSON as a baseline, indexed by system id."""
+    if not os.path.exists(OUTPUT_FILE):
+        print(f'No existing {OUTPUT_FILE} to merge — building fresh.')
+        return {}
+    try:
+        with open(OUTPUT_FILE, encoding='utf-8') as f:
+            prev = json.load(f)
+        idx = {s['id']: s for s in prev.get('systems', []) if 'id' in s}
+        print(f'Baseline: loaded {len(idx):,} systems from {OUTPUT_FILE}')
+        return idx
+    except Exception as e:
+        print(f'  Could not read baseline {OUTPUT_FILE}: {e}')
+        return {}
+
+def merge_baseline(systems_by_id, baseline_by_id):
+    """Backfill planet/asteroid data for systems not pulled this run.
+
+    A system with an empty planets list was not fetched this run (every game
+    system has at least one planet), so if the baseline has planet data for it,
+    restore it. This lets a colonized-only update keep the full planet coverage
+    captured by an earlier --all-planets pull.
+
+    Planet geography is static; only ownership changes. Colonized systems are
+    always re-pulled fresh above, so only a system abandoned since the last full
+    pull can carry stale owner data here — self-correcting on the next
+    --all-planets run.
+    """
+    restored = 0
+    for sid, s in systems_by_id.items():
+        if s['planets']:
+            continue
+        base = baseline_by_id.get(sid)
+        if base and base.get('planets'):
+            s['planets']        = base['planets']
+            s['asteroidFields'] = base.get('asteroidFields', [])
+            restored += 1
+    return restored
 
 # ── Cleaning functions ────────────────────────────────────────────────────────
 def is_pvp(zone):
@@ -526,7 +585,7 @@ def pull_system_debris(session):
 # ── Assemble output ───────────────────────────────────────────────────────────
 def assemble(systems_by_id, stations, all_sectors, config,
              wormholes, market_hubs, pirate_camps, system_debris,
-             test_mode=False):
+             test_mode=False, merged_count=0):
     systems_list    = list(systems_by_id.values())
     total_planets   = sum(len(s['planets'])       for s in systems_list)
     total_moons     = sum(len(p['moons'])          for s in systems_list
@@ -547,6 +606,7 @@ def assemble(systems_by_id, stations, all_sectors, config,
             'stationCount':       len(stations),
             'authUserId':         config['userId'],
             'authUsername':       config['username'],
+            'mergedFromBaseline': merged_count,
             'pullConfig':         PULL,
         },
         'sectors':     all_sectors,
@@ -577,10 +637,17 @@ def assemble(systems_by_id, stations, all_sectors, config,
 def main():
     test_mode = '--test'  in sys.argv
     fresh     = '--fresh' in sys.argv
+    no_merge  = '--no-merge' in sys.argv
+
+    # Per-run planet-detail scope override
+    if   '--all-planets'    in sys.argv: PULL['all_planets'] = True
+    elif '--colonized-only' in sys.argv: PULL['all_planets'] = False
 
     print('=' * 60)
     print('  NEXUS LEGACY MAP INTELLIGENCE DUMPER')
     if test_mode: print('  *** TEST MODE — 1 sector only ***')
+    print(f'  Planet detail: {"ALL systems" if PULL["all_planets"] else "colonized only"}'
+          f'{"" if (no_merge or test_mode) else " + merge"}')
     print('=' * 60)
 
     start_time = time.time()
@@ -609,12 +676,24 @@ def main():
     pirate_camps = pull_pirate_camps(session)
     system_debris= pull_system_debris(session)
 
+    # ── Merge with existing baseline ────────────────────────────────────────────
+    # Backfill planet data for systems not re-pulled this run so a colonized-only
+    # update keeps the full coverage from an earlier --all-planets pull.
+    merged_count = 0
+    if not no_merge and not test_mode:
+        print('\nMerging with existing baseline...')
+        baseline = load_baseline()
+        if baseline:
+            merged_count = merge_baseline(systems_by_id, baseline)
+            print(f'  Restored planet data for {merged_count:,} systems '
+                  f'from {OUTPUT_FILE}')
+
     # ── Assemble ───────────────────────────────────────────────────────────────
     print('\nAssembling output...')
     fname = assemble(
         systems_by_id, stations, all_sectors, config,
         wormholes, market_hubs, pirate_camps, system_debris,
-        test_mode=test_mode
+        test_mode=test_mode, merged_count=merged_count
     )
 
     elapsed     = time.time() - start_time

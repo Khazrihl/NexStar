@@ -1,2 +1,14 @@
+# Credentials — never commit
 nl_config.txt
+*.token
+.env
+
+# Checkpoints / generated artifacts
 nl_dumper_progress.json
+nexus-map-TEST.json
+*.backup.json
+*_discord.txt
+
+# Python
+__pycache__/
+*.pyc
