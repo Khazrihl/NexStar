@@ -1,0 +1,366 @@
+================================================================================
+  NEXSTAR — FEATURE OVERVIEW
+  Nexus Legacy Season 0
+  Current Version: 2.1.0
+================================================================================
+
+
+OVERVIEW
+--------
+NexStar is a galaxy intelligence and market analysis suite for Nexus Legacy.
+It pulls live data directly from the game API and serves it through interactive
+browser-based tools and CLI reporting utilities.
+
+The toolset consists of four components:
+
+  nl_dumper.py              API puller — pulls live galaxy data directly from
+                            the game and writes nexus-map-clean.json.
+
+  nexus-map-viewer.html     Interactive galaxy map — browser-based map with
+                            live filters, system popups, alliance heatmaps,
+                            station rendering, sector highlighting, and
+                            threat assessment overlay.
+
+  nl_discord_summary.py     CLI filter tool — queries the galaxy database and
+                            outputs formatted reports for posting in Discord.
+
+  nexus-market-viewer.html  Interactive market terminal — live market order
+                            browser with NPC ratio analysis, buyer/seller
+                            modes, and resource filters.
+
+  nl_market_proxy.py        Market proxy — local Python server that bridges
+                            the market viewer to the game API, bypassing
+                            browser CORS restrictions.
+
+
+--------------------------------------------------------------------------------
+TOOL 1: nl_dumper.py  (map/)
+--------------------------------------------------------------------------------
+
+PURPOSE
+  Pulls galaxy data directly from the Nexus Legacy game API and writes a clean,
+  structured nexus-map-clean.json. No intermediate parse step needed.
+
+SETUP
+  Create nl_config.txt in the same directory as the script:
+      token=your_nexus_token_here
+
+  To get your token: open Edge DevTools (F12) → Application tab →
+  Cookies → s0.nexuslegacy.space → copy the nexus_token value.
+  Token expiry: approximately 60 days.
+
+USAGE
+  python nl_dumper.py              Full pull (~15 minutes)
+  python nl_dumper.py --test       Single sector test
+  python nl_dumper.py --fresh      Wipe checkpoint and start over
+
+OUTPUT FILES
+  nexus-map-clean.json        Final clean database
+  nl_dumper_progress.json     Checkpoint file — safe to delete after success
+
+RESUMABLE
+  If interrupted, run again. Completed sectors are skipped automatically.
+
+PULL CONFIG
+  PULL block at top of script — set True/False per data type:
+
+      'galaxy_map'         All system names, coords, zones, hasColonies
+      'sectors'            Sector metadata per arm
+      'colonized_planets'  Planets + moons for colonized systems only
+      'asteroid_fields'    Asteroid fields in colonized systems
+      'stations'           Station ownership, shield, building levels
+      'wormholes'          Disabled — future use
+      'pirate_camps'       Disabled — future use
+      'system_debris'      Disabled — future use
+      'market_hubs'        Disabled — future use
+      'all_planets'        Full planet detail for ALL systems (~14,000 extra
+                           calls, use for one-time base dump only)
+
+PULL ARCHITECTURE
+  Phase 1 — Galaxy map (one call)
+  Phase 2 — Per arm sectors (6 calls)
+  Phase 3 — Per visible sector: systems + colonized planet detail + stations
+             Skips outline/unvisited sectors
+             Only colonized systems get planet detail calls
+             Stations pulled per sector (5 per sector at fixed positions)
+  Checkpoint saved every 25 sectors.
+
+STARTUP OUTPUT
+  Token loaded — user, expiry date, warnings if expiring within 14 days.
+  Started/Finished timestamps and total elapsed time printed on completion.
+
+OUTPUT STRUCTURE
+  {
+    meta: { capturedAt, generatedBy, universe, pullConfig,
+            systemCount, sectorCount, planetCount, moonCount,
+            asteroidFieldCount, stationCount,
+            authUserId, authUsername },
+    sectors:  [ { id, armId, index, name, securityZone, visibility,
+                  systemCount, colonizedPlanets, controllerAllianceId } ],
+    systems:  [ { id, name, armId, sectorId, securityZone, isPvpZone,
+                  starType, visibility, x, y, hasColonies, colonizedCount,
+                  planetCount, isMarketHub, isRiftCore, hasAllianceMarker,
+                  planets: [ { id, name, systemId, position, planetType,
+                               size, temperature, securityZone, userId,
+                               colonizedAt, isHomeworld, ownerName,
+                               ownerRace, ownerAllianceTag,
+                               ownerIsVacationMode, shieldReinforcedUntil,
+                               moons: [ { id, name, parentPlanetId,
+                                          moonType, size, position,
+                                          buildingSlots, userId,
+                                          ownerName, colonizedAt } ] } ],
+                  asteroidFields: [ { id, name, systemId, fieldType,
+                                      richness, remainingResources,
+                                      totalResources, controllerName,
+                                      controllerUserId, allianceId } ],
+                  stations: [ { id, name, systemId, sectorId, systemName,
+                                ownerAllianceId, ownerAllianceTag,
+                                ownerAllianceName, capturedByUserId,
+                                capturingAllianceId, capturingAllianceTag,
+                                captureEndsAt, shieldHp, shieldMaxHp,
+                                shieldReinforcedUntil, garrison,
+                                buildings: { dock, shield, turret, storage },
+                                createdAt } ] } ],
+    stations:    [ flat list of all stations ],
+    wormholes:   [],
+    marketHubs:  [],
+    pirateCamps: [],
+    systemDebris:[]
+  }
+
+PRIVACY NOTES
+  nexus-map-clean.json contains in-game usernames, alliance tags, and colony
+  locations. It does NOT contain email addresses, Steam IDs, or credentials.
+  Never commit nl_config.txt — it contains your auth token.
+
+
+--------------------------------------------------------------------------------
+TOOL 2: nexus-map-viewer.html  (map/)
+--------------------------------------------------------------------------------
+
+PURPOSE
+  Self-contained browser-based galaxy map. No server, no installation.
+  Open in any browser and load nexus-map-clean.json.
+  Shareable with allied players — each configures their own home alliance.
+
+LOADING DATA
+  Click the load zone or drag and drop nexus-map-clean.json onto it.
+  All data is processed locally — nothing is uploaded anywhere.
+
+MAP NAVIGATION
+  Drag to pan · Scroll wheel to zoom · Pinch to zoom on touch
+  +/- buttons bottom-right · House button resets view
+  System name labels appear at high zoom
+
+DOT COLORS (SECURITY ZONES)
+  Green    Sentinel (PvP disabled — outermost ring)
+  Orange   Open (PvP enabled — middle ring)
+  Red      Dead (PvP enabled — inner ring)
+  Purple   The Rift (PvP enabled — galactic center)
+  Gray     Unscanned
+
+STATION RENDERING
+  Stations replace their system dot with a diamond shape.
+
+  Home alliance station   Large diamond in home color with radial glow
+                          and white center dot. Always prominent.
+  Rival/neutral station   Standard zone-colored diamond. White center
+                          dot if owned by another alliance.
+  Sentinel station        Faint outline only — not contestable.
+  Capture in progress     Red outer ring on the diamond.
+
+HOME ALLIANCE DISPLAY
+  Home alliance colonies render as bright colored dots with glow, overriding
+  zone color. Always visible regardless of filters — dims slightly when
+  outside filter scope but never disappears.
+
+ALLIANCE HEATMAP
+  When Alliance Tag filter is active, a heatmap renders beneath dots.
+  Overlapping blobs accumulate via screen blend, highlighting clusters.
+  Home alliance uses configured color; others use amber.
+
+SECTOR HIGHLIGHTING
+  Click any system to reveal its sector shape. All systems in the same
+  sector receive a soft white glow ring. Click away to dismiss.
+
+FILTERS (all live-update map and results simultaneously)
+  Arm, Sector, Security Zone, Planet Type, Min Slots, Field Type,
+  Min Richness, Alliance Tag, Player Name, Colonized Only (default on),
+  Unaffiliated Only.
+
+  Any system is clickable regardless of filter state. Dimmed systems
+  outside the filter can still be clicked to view their popup.
+
+SYSTEM POPUP
+  Full system detail including star type, location, distance to nearest
+  home colony (when threat radius active), planets with owners and moons,
+  asteroid fields, and stations with shield/ownership/building status.
+
+THREAT ASSESSMENT PANEL (⚔ collapsible)
+  Proximity circles around home alliance colonies with rival highlights.
+  Sentinel excluded (no PvP there).
+
+  Reference Points    Home Alliance colonies as origin points
+  Radius Slider       0–500 in steps of 25 coordinate units
+  Threat Summary      Rival systems in range by Dead/Open zone
+  Popup Distance      Exact distance to nearest home colony + IN RANGE flag
+
+ALLIANCE SETTINGS PANEL (⚙ collapsible)
+  Home Alliance Tag and Alliance Color (hex + color picker).
+  Saves to browser localStorage. Header, legend, heatmap all update.
+
+SHARING
+  Distribute nexus-map-viewer.html and nexus-map-clean.json together.
+  Recipients open locally — no internet required after download.
+
+
+--------------------------------------------------------------------------------
+TOOL 3: nl_discord_summary.py  (map/)
+--------------------------------------------------------------------------------
+
+PURPOSE
+  CLI filter tool that reads nexus-map-clean.json and outputs formatted
+  Discord code blocks. Supports stacking multiple filters.
+
+USAGE
+  python nl_discord_summary.py <file> [flags]
+
+FLAGS
+  --arm <name>            alpha/beta/gamma/delta/epsilon/zeta
+  --sector <n>            In-game sector number (requires --arm)
+  --type <type>           terra/rocky/gas_giant/ice/volcanic/crystalline
+  --zone <zone>           open/sentinel/dead/rift
+  --pvp                   PvP zones only (excludes sentinel)
+  --min-slots <n>         Minimum building slots on at least one planet
+  --colonized             Systems with at least one colonized planet
+  --unaffiliated          Systems with a tagless colonized player
+  --alliance <tag>        Systems colonized by this alliance
+  --player <name>         Partial player name search
+  --list-alliances        Print all alliance tags by colony count, exit
+  --field-type <type>     ore/ice/gas/dark/plasma/quantum
+  --min-richness <n>      Minimum asteroid field richness
+  --sort-slots            Sort by highest planet slot count descending
+  --top <n>               Max systems to show (default 25)
+
+EXAMPLE QUERIES
+  python nl_discord_summary.py nldb.json --pvp --arm epsilon --sector 47
+  python nl_discord_summary.py nldb.json --pvp --alliance SWORD
+  python nl_discord_summary.py nldb.json --type terra --min-slots 18
+  python nl_discord_summary.py nldb.json --list-alliances
+
+SLOT CALCULATION
+  Non-gas-giant:  floor(size / 10)
+  Gas giant:      floor(size / 10 * 0.3)
+  Moon slots use game-reported buildingSlots field.
+
+
+--------------------------------------------------------------------------------
+TOOL 4: nexus-market-viewer.html + nl_market_proxy.py  (market/)
+--------------------------------------------------------------------------------
+
+PURPOSE
+  Live market order browser with NPC exchange rate ratio analysis.
+  Pulls directly from the game API via a local proxy — always current,
+  no static data file needed.
+
+SETUP
+  nl_config.txt must exist in the market/ folder (same token format).
+  The proxy reads the token automatically — no browser token input needed.
+
+RUNNING
+  Double-click run_market.bat — starts the proxy and opens the viewer.
+  Or manually:
+    python nl_market_proxy.py     (leave running in background)
+    open nexus-market-viewer.html in browser
+
+PROXY STARTUP
+  Shows token owner, expiry date, and warnings:
+    14 days remaining  gentle reminder
+    7 days remaining   !! warning
+    Expired            !! loud warning, requests will fail
+
+BUYER / SELLER MODES
+  Toggle between two perspectives on the same order data:
+
+  Buyer mode    Oriented around what you want to ACQUIRE.
+                Columns: Offering | Amount | Asking | vs NPC | Hub | Seller
+  Seller mode   Oriented around what you want to OFFER.
+                Columns: Requesting | Amount | For | vs NPC | Hub | Posted By
+
+NPC EXCHANGE RATES (confirmed)
+  Ore          × 1    (base unit)
+  Silicates    × 2
+  Hydrogen     × 3
+  Alloys       × 5
+
+ADVANCED RESOURCE RATES (market-estimated, flagged with ~)
+  Cryo Ice     × 8  est.
+  Plasma Core  × 12 est.
+  Bio Extract  × 15 est.
+  Dark Matter  × 20 est.
+  Antimatter   × 25 est.
+  Quantum Dust × 30 est.
+
+VS NPC RATIO
+  The key column. Expresses each order as a multiplier against NPC rate.
+    > 1.0   Better than NPC — good deal for the buyer
+    = 1.0   Equivalent to NPC
+    < 1.0   Worse than NPC — avoid unless no alternative
+  Displayed as a color-coded bar (green/amber/red) plus numeric value.
+  Estimated rates flagged with ~ suffix.
+
+FILTERS
+  Offering, Asking, Status (active/partial/all), Hub, Minimum Ratio.
+  All live-update the table. Clear button resets all filters.
+
+SORTING
+  Click any column header to sort. Click again to reverse.
+  Default sort: best vs NPC ratio descending.
+
+STATUS
+  Active          Fresh order, full amount available
+  Partial ◑ X%   Partially filled — X% of original offer taken
+
+FOOTER
+  Active count, partial count, best ratio in current view.
+
+HUBS
+  12 total — 6 sentinel hubs (one per arm), 6 dead space hubs.
+  All hubs share the same 5% commission rate.
+  Orders can be filled from any hub regardless of where posted.
+
+  Sentinel hubs:   Hub Alpha/Beta/Gamma/Delta/Epsilon/Zeta
+  Dead space hubs: Shadow Market, Void Exchange, Dark Bazaar,
+                   Outlaw Port, Smuggler's Den, Abyss Station
+
+
+--------------------------------------------------------------------------------
+DATA FLOW
+--------------------------------------------------------------------------------
+
+  [Nexus Legacy Game API]
+        |
+        +-- nl_dumper.py  ──────────────────>  nexus-map-clean.json
+        |       |                                      |
+        |       |                          nexus-map-viewer.html
+        |       |                          nl_discord_summary.py
+        |
+        +-- nl_market_proxy.py  ────────>  nexus-market-viewer.html
+              (reads nl_config.txt,              (live data, no file)
+               proxies API requests)
+
+
+--------------------------------------------------------------------------------
+SYSTEM REQUIREMENTS
+--------------------------------------------------------------------------------
+
+  nl_dumper.py              Python 3.8+, requests library
+  nl_discord_summary.py     Python 3.8+, no external dependencies
+  nl_market_proxy.py        Python 3.8+, no external dependencies
+  nexus-map-viewer.html     Any modern browser, no internet after download
+  nexus-market-viewer.html  Any modern browser, nl_market_proxy.py running
+
+
+================================================================================
+  END OF DOCUMENT
+================================================================================
