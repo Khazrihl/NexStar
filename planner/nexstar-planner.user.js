@@ -2,7 +2,7 @@
 // @name        NexStar Planner
 // @namespace   nexuslegacy-tools
 // @description Fleet, research, and building cost planner. Pulls live data from the game API — no setup required.
-// @version     0.3.1
+// @version     0.4.0
 // @match       https://*.nexuslegacy.space/*
 // @grant       GM_getValue
 // @grant       GM_setValue
@@ -70,11 +70,15 @@
   }
 
   // ── Persistence ────────────────────────────────────────────────────────────
+  function queueKey() {
+    const name = currentPlanetName() || 'default';
+    return `plannerQueue_${name}`;
+  }
   function saveQueue() {
-    try { GM_setValue('plannerQueue', JSON.stringify(state.queue)); } catch (e) { /* */ }
+    try { GM_setValue(queueKey(), JSON.stringify(state.queue)); } catch (e) { /* */ }
   }
   function loadQueue() {
-    try { const q = GM_getValue('plannerQueue', '[]'); state.queue = JSON.parse(q) || []; } catch (e) { state.queue = []; }
+    try { const q = GM_getValue(queueKey(), '[]'); state.queue = JSON.parse(q) || []; } catch (e) { state.queue = []; }
   }
   loadQueue();
 
@@ -369,7 +373,12 @@
       text-transform: uppercase;
       flex: 1;
     }
-    #nxp-header .nxp-planet {
+    #nxp-header .nxp-ver {
+      font-size: 9px;
+      color: #3a4a5a;
+      letter-spacing: 0.06em;
+      margin-right: 4px;
+    }
       font-size: 10px;
       color: #5a6a7a;
       letter-spacing: 0.06em;
@@ -972,7 +981,10 @@
           ? `Req: ${tech.requirements.map(r => r.key.replace(/_/g,' ')).join(', ')}`
           : '';
 
-      const canAdd = hasCost && !atMax && !isInProgress && tech.eraUnlocked;
+      // In-progress single-level techs can't be planned again
+      // In-progress multi-level techs CAN have their next level planned
+      const canAdd = hasCost && !atMax && tech.eraUnlocked &&
+        !(isInProgress && tech.maxLevel === 1);
 
       return `
         <div class="nxp-row ${(isCompleted && atMax) ? 'locked' : ''}">
@@ -1223,6 +1235,7 @@
     panel.innerHTML = `
       <div id="nxp-header">
         <span class="nxp-title">⬡ NexStar Planner</span>
+        <span class="nxp-ver">v${VERSION}</span>
         <span class="nxp-planet">${pname}</span>
         <span class="nxp-refresh" data-action="refresh" title="Refresh data">↻</span>
         <span class="nxp-close" data-action="close" title="Close">×</span>
@@ -1380,12 +1393,14 @@
     const name = currentPlanetName();
     if (name && name !== _lastPlanetName) {
       _lastPlanetName = name;
+      loadQueue(); // load this colony's queue
       if (panel.style.display !== 'none') {
         fetchAll();
       } else {
         state.planet = null;
         state.ships  = null;
       }
+      render();
     }
   }, 1500);
 
