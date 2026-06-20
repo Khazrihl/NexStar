@@ -5,6 +5,67 @@
 
 
 --------------------------------------------------------------------------------
+v2.2.0  —  Incremental Merge, UI Restructure & Landing Page
+--------------------------------------------------------------------------------
+
+OVERVIEW
+  Incremental dump merge architecture added to nl_dumper.py — uncolonized
+  system data is now preserved across runs. Map viewer restructured with a
+  floating right-side results panel, loading spinner, and auto-fetch. Repo
+  reorganized into subfolders with a GitHub Pages landing page.
+
+CHANGES: nl_dumper.py
+  * Baseline merge — on startup, loads existing nexus-map-clean.json as a
+    baseline before pulling. Systems not refreshed in the current run retain
+    their planet, moon, and asteroid data from the previous dump.
+  * Uncolonized systems: only live flags updated (hasColonies, colonizedCount,
+    securityZone, isPvpZone, isMarketHub, isRiftCore, visibility). Planet and
+    asteroid data preserved intact.
+  * Colonized systems: fully refreshed as before — planet detail re-pulled
+    from API and replaced.
+  * Stations: cleared per sector before rebuilding to prevent stale ownership
+    data accumulating across runs.
+  * New systems (not in baseline): added with a clean entry as normal.
+  * --fresh flag bypasses baseline loading entirely for a true clean slate.
+  * Baseline load summary printed on startup: total systems, colonized count,
+    systems with planet data, new systems discovered.
+
+CHANGES: nexus-map-viewer.html
+  * Results panel moved from bottom of left sidebar to a dedicated right
+    sidebar (200px). Left sidebar now contains only filters, legend, threat
+    assessment, and alliance settings.
+  * Auto-fetch on load — map data fetches nexus-map-clean.json automatically
+    on page open. No user action required when hosted on GitHub Pages or when
+    the JSON is in the same folder locally.
+  * Loading spinner — canvas shows an animated spinner with pulsing status
+    text while the fetch is in progress. Falls back to the standard empty
+    state and drag-and-drop prompt if the fetch fails.
+  * Load zone relabeled to "Load local override" on successful auto-fetch,
+    clarifying that drag-and-drop is for manual overrides only.
+
+NEW: index.html  (repo root)
+  GitHub Pages landing page for khazrihl.github.io/NexStar.
+  Dark-themed card layout matching the toolset aesthetic.
+  Links to Galaxy Map and Market Terminal with WIP disclaimer.
+  Matches the NexStar visual identity — dark background, amber accent.
+
+REPO RESTRUCTURE
+  Files reorganized into subfolders:
+    map/      nexus-map-viewer.html, nexus-map-clean.json,
+              nl_dumper.py, nl_discord_summary.py
+    market/   nexus-market-viewer.html, nl_market_proxy.py, run_market.bat
+    docs/     NEXSTAR_FEATURE_OVERVIEW.txt, NEXSTAR_PATCH_NOTES.txt
+
+CHANGES: nexus-market-viewer.html
+  * Player name column moved to first position in both buyer and seller modes
+    for easier cross-reference against the in-game market UI.
+    Buyer columns:  Seller | Offering | Amount | Asking | vs NPC |
+                    Hub | Expires | Status
+    Seller columns: Posted By | Requesting | Amount | For | vs NPC |
+                    Hub | Expires | Status
+
+
+--------------------------------------------------------------------------------
 v2.1.0  —  Market Terminal
 --------------------------------------------------------------------------------
 

@@ -675,22 +675,22 @@ function expiresIn(expiresAt) {
 function buildHeader() {
   const cols = mode === 'buyer'
     ? [
+        { key:'seller',  label:'Seller' },
         { key:'offer',   label:'Offering' },
         { key:'amount',  label:'Amount' },
         { key:'request', label:'Asking' },
         { key:'ratio',   label:'vs NPC' },
         { key:'hub',     label:'Hub' },
-        { key:'seller',  label:'Seller' },
         { key:'expires', label:'Expires' },
         { key:'status',  label:'Status' },
       ]
     : [
+        { key:'seller',  label:'Posted By' },
         { key:'request', label:'Requesting' },
         { key:'amount',  label:'Amount' },
         { key:'offer',   label:'For' },
         { key:'ratio',   label:'vs NPC' },
         { key:'hub',     label:'Hub' },
-        { key:'seller',  label:'Posted By' },
         { key:'expires', label:'Expires' },
         { key:'status',  label:'Status' },
       ];
@@ -722,6 +722,7 @@ function buildRows(orders) {
   return orders.map(o => {
     if (mode === 'buyer') {
       return `<tr>
+        <td style="color:var(--text-dim)">${o.username}</td>
         <td>${resPill(o.offerResource)}</td>
         <td>
           <span class="amt">${o.offerRemaining.toLocaleString()}</span>
@@ -734,12 +735,12 @@ function buildRows(orders) {
         </td>
         <td class="ratio-cell">${ratioCell(o)}</td>
         <td>${hubLabel(o.hubId)}</td>
-        <td style="color:var(--text-dim)">${o.username}</td>
         <td style="color:var(--text-dim)">${expiresIn(o.expiresAt)}</td>
         <td>${statusBadge(o)}</td>
       </tr>`;
     } else {
       return `<tr>
+        <td style="color:var(--text-dim)">${o.username}</td>
         <td>${resPill(o.requestResource)}</td>
         <td>
           <span class="amt">${o.requestAmount.toLocaleString()}</span>
@@ -752,7 +753,6 @@ function buildRows(orders) {
         </td>
         <td class="ratio-cell">${ratioCell(o)}</td>
         <td>${hubLabel(o.hubId)}</td>
-        <td style="color:var(--text-dim)">${o.username}</td>
         <td style="color:var(--text-dim)">${expiresIn(o.expiresAt)}</td>
         <td>${statusBadge(o)}</td>
       </tr>`;
