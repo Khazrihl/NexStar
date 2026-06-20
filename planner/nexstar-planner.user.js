@@ -2,7 +2,7 @@
 // @name        NexStar Planner
 // @namespace   nexuslegacy-tools
 // @description Fleet, research, and building cost planner. Pulls live data from the game API — no setup required.
-// @version     0.5.2
+// @version     0.5.3
 // @match       https://*.nexuslegacy.space/*
 // @grant       GM_getValue
 // @grant       GM_setValue
@@ -17,7 +17,7 @@
 
   // ── Constants ──────────────────────────────────────────────────────────────
   const TOOL_NAME = 'NexStar Planner';
-  const VERSION   = '0.5.2';
+  const VERSION   = '0.5.3';
 
   const RES_KEYS = ['ore', 'silicates', 'hydrogen', 'alloys',
     'cryoIce', 'plasmaCore', 'bioExtract', 'darkMatter', 'quantumDust', 'antimatter'];
@@ -1047,8 +1047,10 @@
       const atMax          = nextLevel > tech.maxLevel;
 
       const cost = (() => {
-        // Research uses pure costFactor^(nextLevel-1) — no switchover
-        const factor = Math.pow(tech.costFactor || 1, nextLevel - 1);
+        // costDoubleAfter = one-time extra cf multiplication when crossing that level
+        const cf = tech.costFactor || 1;
+        const da = tech.costDoubleAfter || 0;
+        const factor = Math.pow(cf, nextLevel - 1) * (da > 0 && nextLevel > da ? cf : 1);
         const c = {};
         if (tech.costOre)       c.ore       = Math.round(tech.costOre       * factor);
         if (tech.costSilicates) c.silicates = Math.round(tech.costSilicates * factor);
@@ -1481,8 +1483,10 @@
       // Check against maxLevel
       if (nextLevel > tech.maxLevel) return;
 
-      // Research uses pure costFactor^(nextLevel-1) — no switchover
-      const factor = Math.pow(tech.costFactor || 1, nextLevel - 1);
+      // costDoubleAfter = one-time extra cf multiplication when crossing that level
+      const cf = tech.costFactor || 1;
+      const da = tech.costDoubleAfter || 0;
+      const factor = Math.pow(cf, nextLevel - 1) * (da > 0 && nextLevel > da ? cf : 1);
       const cost = {};
       if (tech.costOre)       cost.ore       = Math.round(tech.costOre       * factor);
       if (tech.costSilicates) cost.silicates = Math.round(tech.costSilicates * factor);
