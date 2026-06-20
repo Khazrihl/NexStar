@@ -2,7 +2,7 @@
 // @name        NexStar Planner
 // @namespace   nexuslegacy-tools
 // @description Fleet, research, and building cost planner. Pulls live data from the game API — no setup required.
-// @version     0.4.0
+// @version     0.5.0
 // @match       https://*.nexuslegacy.space/*
 // @grant       GM_getValue
 // @grant       GM_setValue
@@ -17,7 +17,7 @@
 
   // ── Constants ──────────────────────────────────────────────────────────────
   const TOOL_NAME = 'NexStar Planner';
-  const VERSION   = '0.1.0';
+  const VERSION   = '0.5.0';
 
   const RES_KEYS = ['ore', 'silicates', 'hydrogen', 'alloys',
     'cryoIce', 'plasmaCore', 'bioExtract', 'darkMatter', 'quantumDust', 'antimatter'];
@@ -53,6 +53,8 @@
     shipSearch: '',
     resSearch: '',
     buildSearch: '',
+    // collapsed groups — key is group label, resets on tab switch
+    collapsed: {},
   };
 
   // ── Flash helper ───────────────────────────────────────────────────────────
@@ -168,11 +170,20 @@
   }
 
   function buildingCost(building) {
-    // Cost to upgrade from current level to next
     const def = building.definition;
     if (!def) return {};
-    const lvl = building.level;
-    const factor = Math.pow(def.costFactor, lvl + 1);
+    const n  = building.level + 1; // target level
+    const sw = def.costDoubleAfter > 0 ? def.costDoubleAfter : 10;
+    const cf = def.costFactor      || 1;
+    const hf = def.highLevelFactor || cf;
+
+    let factor;
+    if (n <= sw) {
+      factor = Math.pow(cf, n - 1);
+    } else {
+      factor = Math.pow(cf, sw - 1) * Math.pow(hf, n - sw);
+    }
+
     const c = {};
     if (def.baseCostOre)       c.ore       = Math.round(def.baseCostOre       * factor);
     if (def.baseCostSilicates) c.silicates = Math.round(def.baseCostSilicates * factor);
@@ -447,6 +458,7 @@
     .nxp-search-bar {
       padding: 6px 10px 2px;
       border-bottom: 1px solid #111620;
+      position: relative;
     }
     .nxp-search-input {
       width: 100%;
@@ -456,13 +468,54 @@
       color: #cdd8e8;
       font: inherit;
       font-size: 11px;
-      padding: 4px 8px;
+      padding: 4px 24px 4px 8px;
       box-sizing: border-box;
       outline: none;
       transition: border-color 0.1s;
     }
     .nxp-search-input:focus { border-color: #e8a838; }
     .nxp-search-input::placeholder { color: #3a4a5a; }
+    .nxp-search-clear {
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-40%);
+      cursor: pointer;
+      color: #3a4a5a;
+      font-size: 14px;
+      line-height: 1;
+      padding: 2px 4px;
+      transition: color 0.1s;
+    }
+    .nxp-search-clear:hover { color: #f87171; }
+
+    /* Branch/category group headers */
+    .nxp-group-hd {
+      padding: 5px 14px 3px;
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #e8a838;
+      background: rgba(232,168,56,0.05);
+      border-top: 1px solid rgba(232,168,56,0.12);
+      border-bottom: 1px solid #0e1118;
+      margin-top: 2px;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.1s;
+    }
+    .nxp-group-hd:first-child { margin-top: 0; border-top: none; }
+    .nxp-group-hd:hover { background: rgba(232,168,56,0.1); }
+    .nxp-group-hd .nxp-chevron {
+      font-size: 8px;
+      opacity: 0.6;
+      transition: transform 0.15s;
+      display: inline-block;
+    }
+    .nxp-group-hd.collapsed .nxp-chevron { transform: rotate(-90deg); }
 
     /* Body */
     #nxp-body {
@@ -848,11 +901,15 @@
       <div class="nxp-search-bar">
         <input class="nxp-search-input" type="text" placeholder="Search ships…"
           data-search="ship" value="${state.shipSearch}">
+        ${state.shipSearch ? `<span class="nxp-search-clear" data-action="clear-search" data-val="ship">×</span>` : ''}
       </div>
       <div class="nxp-filter-bar">
         ${filters.map(f => `<button class="nxp-filter-btn ${state.shipFilter === f ? 'active' : ''}"
           data-action="ship-filter" data-val="${f}">${f}</button>`).join('')}
       </div>`;
+
+    const SIZE_ORDER  = { small: 0, medium: 1, large: 2, capital: 3 };
+    const CLASS_ORDER = { recon: 0, combat: 1, special: 2, utility: 3 };
 
     let ships = state.ships.ships || [];
     if (state.shipFilter === 'available') ships = ships.filter(s => s.available);
@@ -866,21 +923,40 @@
       );
     }
 
-    const rows = ships.map(ship => {
+    // Sort by size then class
+    ships = [...ships].sort((a, b) => {
+      const sd = (SIZE_ORDER[a.shipSize] || 0) - (SIZE_ORDER[b.shipSize] || 0);
+      if (sd !== 0) return sd;
+      const cd = (CLASS_ORDER[a.shipClass] || 0) - (CLASS_ORDER[b.shipClass] || 0);
+      if (cd !== 0) return cd;
+      return a.sortOrder - b.sortOrder;
+    });
+
+    // Group by size + class for headers
+    const html = [];
+    let lastGroup = null;
+    for (const ship of ships) {
+      const group = `${ship.shipSize} · ${ship.shipClass}`;
+      if (group !== lastGroup) {
+        const collapsed = !!state.collapsed[group];
+        html.push(`<div class="nxp-group-hd ${collapsed ? 'collapsed' : ''}"
+          data-action="toggle-group" data-val="${group}">
+          <span class="nxp-chevron">▾</span>${ship.shipSize} — ${ship.shipClass}
+        </div>`);
+        lastGroup = group;
+      }
+      if (state.collapsed[group]) continue;
       const cost     = shipCost(ship, 1);
       const buildSec = Math.round((ship.buildTime || 0) * mult);
       const canBuild = ship.available;
       const nameClass = canBuild ? 'available' : 'locked';
-
-      // Sub: class + shipyard
       const sub = [
-        ship.shipClass,
-        ship.shipyardName ? `· ${ship.shipyardName} Lv${ship.requiredShipyardLevel}` : '',
-        !ship.researchMet ? '· 🔒 Research required' : '',
-        !ship.shipyardMet ? `· 🔒 Shipyard Lv${ship.requiredShipyardLevel} required` : '',
-      ].filter(Boolean).join(' ');
+        ship.shipyardName ? `${ship.shipyardName} Lv${ship.requiredShipyardLevel}` : '',
+        !ship.researchMet ? '🔒 Research required' : '',
+        !ship.shipyardMet ? `🔒 Shipyard Lv${ship.requiredShipyardLevel} required` : '',
+      ].filter(Boolean).join(' · ');
 
-      return `
+      html.push(`
         <div class="nxp-row ${canBuild ? '' : 'locked'}">
           <div class="nxp-row-info">
             <div class="nxp-row-name ${nameClass}">${ship.name}</div>
@@ -898,11 +974,11 @@
                 data-action="add-ship" data-id="${ship.id}">+ Plan</button>
             </div>
           </div>
-        </div>`;
-    });
+        </div>`);
+    }
 
-    return filterBar + (rows.length
-      ? rows.join('')
+    return filterBar + (html.length
+      ? html.join('')
       : '<div class="nxp-empty">No ships match this filter.</div>');
   }
 
@@ -919,6 +995,7 @@
       <div class="nxp-search-bar">
         <input class="nxp-search-input" type="text" placeholder="Search research…"
           data-search="res" value="${state.resSearch}">
+        ${state.resSearch ? `<span class="nxp-search-clear" data-action="clear-search" data-val="res">×</span>` : ''}
       </div>
       <div class="nxp-filter-bar">
         ${branches.map(b => `<button class="nxp-filter-btn ${state.resBranch === b ? 'active' : ''}"
@@ -943,28 +1020,59 @@
       );
     }
 
-    // Sort: in_progress first, then available, then locked, then completed
-    const order = { in_progress: 0, null: 1, completed: 3 };
+    // Sort by branch then lab level then sortOrder
+    const BRANCH_ORDER = { economy: 0, military: 1, science: 2 };
     techs = [...techs].sort((a, b) => {
-      const ao = a.status === null ? 1 : a.status === 'in_progress' ? 0 : a.status === 'completed' ? 3 : 2;
-      const bo = b.status === null ? 1 : b.status === 'in_progress' ? 0 : b.status === 'completed' ? 3 : 2;
-      return ao - bo || a.sortOrder - b.sortOrder;
+      // When viewing a single branch, sort by lab level then sortOrder
+      if (state.resBranch !== 'all') {
+        return (a.requiredLabLevel - b.requiredLabLevel) || (a.sortOrder - b.sortOrder);
+      }
+      const bd = (BRANCH_ORDER[a.branch] || 0) - (BRANCH_ORDER[b.branch] || 0);
+      if (bd !== 0) return bd;
+      return (a.requiredLabLevel - b.requiredLabLevel) || (a.sortOrder - b.sortOrder);
     });
 
-    const rows = techs.map(tech => {
+    // Build rows with branch + lab headers
+    const html = [];
+    let lastBranch = null, lastLab = null;
+
+    for (const tech of techs) {
       const isCompleted   = tech.isMaxed || (tech.status === 'completed' && tech.level >= tech.maxLevel);
       const isInProgress  = tech.status === 'in_progress';
       const isAvailable   = tech.status === null && tech.eraUnlocked && !isCompleted;
 
-      // Count levels already queued for this tech
-      const queuedLevels = state.queue.filter(q => q.type === 'research' && q.key === tech.key).length;
+      const queuedLevels   = state.queue.filter(q => q.type === 'research' && q.key === tech.key).length;
       const effectiveLevel = tech.level + queuedLevels;
       const nextLevel      = effectiveLevel + 1;
       const atMax          = nextLevel > tech.maxLevel;
 
-      const cost     = researchCost(tech);
-      const hasCost  = Object.keys(cost).length > 0;
-      const timeSec  = Math.round((tech.nextResearchTime || 0) * mult);
+      const cost    = researchCost(tech);
+      const hasCost = Object.keys(cost).length > 0;
+      const timeSec = Math.round((tech.nextResearchTime || 0) * mult);
+
+      // Branch header (only when showing all branches)
+      if (state.resBranch === 'all' && tech.branch !== lastBranch) {
+        const collapsed = !!state.collapsed[`branch-${tech.branch}`];
+        html.push(`<div class="nxp-group-hd ${collapsed ? 'collapsed' : ''}"
+          data-action="toggle-group" data-val="branch-${tech.branch}">
+          <span class="nxp-chevron">▾</span>${tech.branch}
+        </div>`);
+        lastBranch = tech.branch;
+        lastLab = null;
+      }
+      if (state.resBranch === 'all' && state.collapsed[`branch-${tech.branch}`]) continue;
+
+      // Lab level sub-header
+      const labKey = `lab-${tech.branch}-${tech.requiredLabLevel}`;
+      if (tech.requiredLabLevel !== lastLab) {
+        const collapsed = !!state.collapsed[labKey];
+        html.push(`<div class="nxp-section-hd" style="padding-left:${state.resBranch === 'all' ? '22' : '14'}px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px"
+          data-action="toggle-group" data-val="${labKey}">
+          <span style="font-size:8px;opacity:0.6;transition:transform 0.15s;display:inline-block;transform:${collapsed ? 'rotate(-90deg)' : 'rotate(0)'}">▾</span>Lab ${tech.requiredLabLevel}
+        </div>`);
+        lastLab = tech.requiredLabLevel;
+      }
+      if (state.collapsed[labKey]) continue;
 
       let nameClass = 'locked';
       if (isInProgress) nameClass = 'in-progress';
@@ -975,22 +1083,20 @@
         ? ` (Lv ${effectiveLevel}/${tech.maxLevel}${queuedLevels > 0 ? ` +${queuedLevels} queued` : ''})`
         : '';
       const statusTxt = (isCompleted && atMax) ? '✓ Max' :
-        isInProgress ? `⟳ In Progress` :
+        isInProgress ? '⟳ In Progress' :
         !tech.eraUnlocked ? '🔒 Era locked' :
         tech.requirements && tech.requirements.length
           ? `Req: ${tech.requirements.map(r => r.key.replace(/_/g,' ')).join(', ')}`
           : '';
 
-      // In-progress single-level techs can't be planned again
-      // In-progress multi-level techs CAN have their next level planned
       const canAdd = hasCost && !atMax && tech.eraUnlocked &&
         !(isInProgress && tech.maxLevel === 1);
 
-      return `
+      html.push(`
         <div class="nxp-row ${(isCompleted && atMax) ? 'locked' : ''}">
           <div class="nxp-row-info">
             <div class="nxp-row-name ${nameClass}">${tech.name}${lvlTxt}</div>
-            <div class="nxp-row-sub">${tech.branch} · Era ${tech.era}${statusTxt ? ' · ' + statusTxt : ''}${tech.requiredLabLevel > 1 ? ` · Lab ${tech.requiredLabLevel}` : ''}</div>
+            <div class="nxp-row-sub">${tech.category.replace(/_/g,' ')}${statusTxt ? ' · ' + statusTxt : ''}</div>
             ${hasCost ? costChips(cost, stock) : ''}
           </div>
           <div class="nxp-row-actions">
@@ -998,13 +1104,15 @@
             <button class="nxp-add-btn" id="nxp-add-res-${tech.key}" ${canAdd ? '' : 'disabled'}
               data-action="add-research" data-val="${tech.key}">+ Plan${queuedLevels > 0 ? ` Lv${nextLevel}` : ''}</button>
           </div>
-        </div>`;
-    });
+        </div>`);
+    }
 
-    return filterBar + (rows.length
-      ? rows.join('')
+    return filterBar + (html.length
+      ? html.join('')
       : '<div class="nxp-empty">No research matches this filter.</div>');
   }
+
+
 
   // ── Tab: Buildings ─────────────────────────────────────────────────────────
   function renderBuildings() {
@@ -1019,6 +1127,7 @@
       <div class="nxp-search-bar">
         <input class="nxp-search-input" type="text" placeholder="Search buildings…"
           data-search="build" value="${state.buildSearch}">
+        ${state.buildSearch ? `<span class="nxp-search-clear" data-action="clear-search" data-val="build">×</span>` : ''}
       </div>
       <div class="nxp-filter-bar">
         ${filters.map(f => `<button class="nxp-filter-btn ${state.buildFilter === f ? 'active' : ''}"
@@ -1040,13 +1149,34 @@
       );
     }
 
-    // Sort by name
-    blist = [...blist].sort((a, b) =>
-      (a.definition?.name || '').localeCompare(b.definition?.name || ''));
+    const CAT_ORDER = { resource: 0, energy: 1, military: 2, defense: 3, utility: 4 };
 
-    const rows = blist.map(b => {
+    // Sort by category then name
+    blist = [...blist].sort((a, b) => {
+      const ca = CAT_ORDER[a.definition?.category] ?? 5;
+      const cb = CAT_ORDER[b.definition?.category] ?? 5;
+      if (ca !== cb) return ca - cb;
+      return (a.definition?.name || '').localeCompare(b.definition?.name || '');
+    });
+
+    // Build rows with category group headers
+    const html = [];
+    let lastCat = null;
+
+    for (const b of blist) {
       const def = b.definition;
-      if (!def) return '';
+      if (!def) continue;
+
+      if (def.category !== lastCat) {
+        const collapsed = !!state.collapsed[`bld-${def.category}`];
+        html.push(`<div class="nxp-group-hd ${collapsed ? 'collapsed' : ''}"
+          data-action="toggle-group" data-val="bld-${def.category}">
+          <span class="nxp-chevron">▾</span>${def.category}
+        </div>`);
+        lastCat = def.category;
+      }
+      if (state.collapsed[`bld-${def.category}`]) continue;
+
       const cost      = buildingCost(b);
       const hasCost   = Object.keys(cost).length > 0;
       const isMaxed   = b.level >= def.maxLevel;
@@ -1054,9 +1184,8 @@
       const cantResearch = !def.requirementsMet;
 
       const baseBuild = def.baseBuildTime || 0;
-      const lvl = b.level;
-      const rawTime = baseBuild * Math.pow(def.buildTimeFactor || 1.5, lvl);
-      const buildSec = Math.round(rawTime * mult);
+      const rawTime   = baseBuild * Math.pow(def.buildTimeFactor || 1.5, b.level);
+      const buildSec  = Math.round(rawTime * mult);
 
       let nameClass = '';
       if (isMaxed)    nameClass = 'locked';
@@ -1064,15 +1193,14 @@
 
       const sub = [
         `Lv ${b.level}/${def.maxLevel}`,
-        def.category,
-        isMaxed    ? '· Max level' : '',
-        isUpg      ? '· Upgrading…' : '',
+        isMaxed      ? '· Max' : '',
+        isUpg        ? '· Upgrading…' : '',
         cantResearch ? '· Requirements not met' : '',
       ].filter(Boolean).join(' ');
 
       const canAdd = hasCost && !isMaxed && !isUpg && def.requirementsMet;
 
-      return `
+      html.push(`
         <div class="nxp-row">
           <div class="nxp-row-info">
             <div class="nxp-row-name ${nameClass}">${def.name}</div>
@@ -1084,11 +1212,11 @@
             <button class="nxp-add-btn" id="nxp-add-bld-${b.id}" ${canAdd ? '' : 'disabled'}
               data-action="add-building" data-id="${b.id}">+ Plan</button>
           </div>
-        </div>`;
-    });
+        </div>`);
+    }
 
-    return filterBar + (rows.length
-      ? rows.join('')
+    return filterBar + (html.length
+      ? html.join('')
       : '<div class="nxp-empty">No buildings match this filter.</div>');
   }
 
@@ -1265,13 +1393,22 @@
     const val    = el.dataset.val;
     const id     = el.dataset.id ? +el.dataset.id : null;
 
-    if (action === 'tab')            { state.tab = val; render(); }
+    if (action === 'tab')            { state.tab = val; state.collapsed = {}; render(); }
     else if (action === 'close')     { panel.style.display = 'none'; }
     else if (action === 'refresh')   { fetchAll(); }
     else if (action === 'ship-filter')   { state.shipFilter  = val; render(); }
     else if (action === 'res-filter')    { state.resFilter   = val; render(); }
     else if (action === 'res-branch')    { state.resBranch   = val; render(); }
     else if (action === 'build-filter')  { state.buildFilter = val; render(); }
+    else if (action === 'clear-search')  {
+      if (val === 'ship')  { state.shipSearch  = ''; render(); }
+      if (val === 'res')   { state.resSearch   = ''; render(); }
+      if (val === 'build') { state.buildSearch = ''; render(); }
+    }
+    else if (action === 'toggle-group') {
+      state.collapsed[val] = !state.collapsed[val];
+      render();
+    }
     else if (action === 'add-ship')      { window.__nxp.addShip(id); }
     else if (action === 'add-research')  { window.__nxp.addResearch(val); }
     else if (action === 'add-building')  { window.__nxp.addBuilding(id); }
