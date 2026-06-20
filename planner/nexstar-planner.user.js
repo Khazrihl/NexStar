@@ -1047,16 +1047,8 @@
       const atMax          = nextLevel > tech.maxLevel;
 
       const cost = (() => {
-        // Same switchover logic as addResearch and buildings
-        const sw = tech.costDoubleAfter > 0 ? tech.costDoubleAfter : 0;
-        const cf = tech.costFactor || 1;
-        const hf = tech.highLevelFactor || cf;
-        let factor;
-        if (!sw || nextLevel <= sw) {
-          factor = Math.pow(cf, nextLevel - 1);
-        } else {
-          factor = Math.pow(cf, sw - 1) * Math.pow(hf, nextLevel - sw);
-        }
+        // Research uses pure costFactor^(nextLevel-1) — no switchover
+        const factor = Math.pow(tech.costFactor || 1, nextLevel - 1);
         const c = {};
         if (tech.costOre)       c.ore       = Math.round(tech.costOre       * factor);
         if (tech.costSilicates) c.silicates = Math.round(tech.costSilicates * factor);
@@ -1489,18 +1481,8 @@
       // Check against maxLevel
       if (nextLevel > tech.maxLevel) return;
 
-      // Same switchover logic as buildings:
-      // costDoubleAfter > 0 → switch at that level; 0 → pure costFactor throughout
-      const sw = tech.costDoubleAfter > 0 ? tech.costDoubleAfter : 0;
-      const cf = tech.costFactor || 1;
-      const hf = tech.highLevelFactor || cf;
-      let factor;
-      if (!sw || nextLevel <= sw) {
-        factor = Math.pow(cf, nextLevel - 1);
-      } else {
-        factor = Math.pow(cf, sw - 1) * Math.pow(hf, nextLevel - sw);
-      }
-
+      // Research uses pure costFactor^(nextLevel-1) — no switchover
+      const factor = Math.pow(tech.costFactor || 1, nextLevel - 1);
       const cost = {};
       if (tech.costOre)       cost.ore       = Math.round(tech.costOre       * factor);
       if (tech.costSilicates) cost.silicates = Math.round(tech.costSilicates * factor);
