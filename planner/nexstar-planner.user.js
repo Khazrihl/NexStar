@@ -2,7 +2,7 @@
 // @name        NexStar Planner
 // @namespace   nexuslegacy-tools
 // @description Fleet, research, and building cost planner. Pulls live data from the game API — no setup required.
-// @version     0.5.4
+// @version     0.5.6
 // @match       https://*.nexuslegacy.space/*
 // @grant       GM_getValue
 // @grant       GM_setValue
@@ -17,7 +17,7 @@
 
   // ── Constants ──────────────────────────────────────────────────────────────
   const TOOL_NAME = 'NexStar Planner';
-  const VERSION   = '0.5.4';
+  const VERSION   = '0.5.6';
 
   const RES_KEYS = ['ore', 'silicates', 'hydrogen', 'alloys',
     'cryoIce', 'plasmaCore', 'bioExtract', 'darkMatter', 'quantumDust', 'antimatter'];
@@ -169,10 +169,10 @@
     return c;
   }
 
-  function buildingCost(building) {
+  function buildingCost(building, effectiveLevel) {
     const def = building.definition;
     if (!def) return {};
-    const n  = building.level + 1; // target level
+    const n  = (effectiveLevel !== undefined ? effectiveLevel : building.level) + 1;
     const cf = def.costFactor      || 1;
     const hf = def.highLevelFactor || cf;
     const da = def.costDoubleAfter || 0;
@@ -1124,7 +1124,7 @@
           <div class="nxp-row-actions">
             ${hasCost ? `<span class="nxp-time-chip">⏱ ${fmtTime(timeSec)}</span>` : ''}
             <button class="nxp-add-btn" id="nxp-add-res-${tech.key}" ${canAdd ? '' : 'disabled'}
-              data-action="add-research" data-val="${tech.key}">+ Plan${queuedLevels > 0 ? ` Lv${nextLevel}` : ''}</button>
+              data-action="add-research" data-val="${tech.key}">${atMax ? 'MAX' : `+ Plan${queuedLevels > 0 ? ` Lv${nextLevel}` : ''}`}</button>
           </div>
         </div>`);
     }
@@ -1199,28 +1199,32 @@
       }
       if (state.collapsed[`bld-${def.category}`]) continue;
 
-      const cost      = buildingCost(b);
+      const queuedLevels   = state.queue.filter(q => q.type === 'building' && q.key === def.key).length;
+      const effectiveLevel = b.level + queuedLevels;
+      const atMax          = (effectiveLevel + 1) > def.maxLevel;
+
+      const cost      = buildingCost(b, effectiveLevel);
       const hasCost   = Object.keys(cost).length > 0;
       const isMaxed   = b.level >= def.maxLevel;
       const isUpg     = b.isUpgrading;
       const cantResearch = !def.requirementsMet;
 
       const baseBuild = def.baseBuildTime || 0;
-      const rawTime   = baseBuild * Math.pow(def.buildTimeFactor || 1.5, b.level);
+      const rawTime   = baseBuild * Math.pow(def.buildTimeFactor || 1.5, effectiveLevel);
       const buildSec  = Math.round(rawTime * mult);
 
       let nameClass = '';
-      if (isMaxed)    nameClass = 'locked';
-      else if (isUpg) nameClass = 'in-progress';
+      if (isMaxed || atMax) nameClass = 'locked';
+      else if (isUpg)       nameClass = 'in-progress';
 
       const sub = [
-        `Lv ${b.level}/${def.maxLevel}`,
-        isMaxed      ? '· Max' : '',
-        isUpg        ? '· Upgrading…' : '',
-        cantResearch ? '· Requirements not met' : '',
+        `Lv ${effectiveLevel}/${def.maxLevel}${queuedLevels > 0 ? ` (+${queuedLevels} queued)` : ''}`,
+        (isMaxed || atMax) ? '· Max' : '',
+        isUpg              ? '· Upgrading…' : '',
+        cantResearch       ? '· Requirements not met' : '',
       ].filter(Boolean).join(' ');
 
-      const canAdd = hasCost && !isMaxed && !isUpg && def.requirementsMet;
+      const canAdd = hasCost && !atMax && !isUpg && def.requirementsMet;
 
       html.push(`
         <div class="nxp-row">
@@ -1232,7 +1236,7 @@
           <div class="nxp-row-actions">
             ${hasCost && !isMaxed ? `<span class="nxp-time-chip">⏱ ${fmtTime(buildSec)}</span>` : ''}
             <button class="nxp-add-btn" id="nxp-add-bld-${b.id}" ${canAdd ? '' : 'disabled'}
-              data-action="add-building" data-id="${b.id}">+ Plan</button>
+              data-action="add-building" data-id="${b.id}">${atMax ? 'MAX' : `+ Plan${queuedLevels > 0 ? ` Lv${effectiveLevel + 1}` : ''}`}</button>
           </div>
         </div>`);
     }
@@ -1529,14 +1533,21 @@
       if (!pd) return;
       const b = (pd.buildings || []).find(x => x.id === buildingId);
       if (!b || !b.definition) return;
-      const cost = buildingCost(b);
-      const def  = b.definition;
+      const def = b.definition;
+
+      const queuedLevels   = state.queue.filter(q => q.type === 'building' && q.key === def.key).length;
+      const effectiveLevel = b.level + queuedLevels;
+      const nextLevel      = effectiveLevel + 1;
+
+      if (nextLevel > def.maxLevel) return;
+
+      const cost = buildingCost(b, effectiveLevel);
       const mult = pd.buildSpeedMult || 1;
-      const rawT = (def.baseBuildTime || 0) * Math.pow(def.buildTimeFactor || 1.5, b.level);
+      const rawT = (def.baseBuildTime || 0) * Math.pow(def.buildTimeFactor || 1.5, effectiveLevel);
       const time = Math.round(rawT * mult);
       addToQueue({
         type: 'building', key: def.key,
-        name: `${def.name} → Lv${b.level + 1}`,
+        name: `${def.name} → Lv${nextLevel}`,
         qty: 1, typeLabel: 'Building', cost, time,
       });
       flashBtn(`nxp-add-bld-${buildingId}`);
