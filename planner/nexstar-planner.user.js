@@ -2,7 +2,7 @@
 // @name        NexStar Planner
 // @namespace   nexuslegacy-tools
 // @description Fleet, research, and building cost planner. Pulls live data from the game API — no setup required.
-// @version     0.3.0
+// @version     0.3.1
 // @match       https://*.nexuslegacy.space/*
 // @grant       GM_getValue
 // @grant       GM_setValue
@@ -168,7 +168,7 @@
     const def = building.definition;
     if (!def) return {};
     const lvl = building.level;
-    const factor = Math.pow(def.costFactor, lvl);
+    const factor = Math.pow(def.costFactor, lvl + 1);
     const c = {};
     if (def.baseCostOre)       c.ore       = Math.round(def.baseCostOre       * factor);
     if (def.baseCostSilicates) c.silicates = Math.round(def.baseCostSilicates * factor);
