@@ -1046,9 +1046,23 @@
       const nextLevel      = effectiveLevel + 1;
       const atMax          = nextLevel > tech.maxLevel;
 
-      const cost    = researchCost(tech);
+      const cost = (() => {
+        // Scale cost to the next level after any already queued
+        const factor = Math.pow(tech.costFactor || 1, effectiveLevel);
+        const c = {};
+        if (tech.costOre)       c.ore       = Math.round(tech.costOre       * factor);
+        if (tech.costSilicates) c.silicates = Math.round(tech.costSilicates * factor);
+        if (tech.costHydrogen)  c.hydrogen  = Math.round(tech.costHydrogen  * factor);
+        if (tech.costAlloys)    c.alloys    = Math.round(tech.costAlloys    * factor);
+        for (const [k, v] of Object.entries(tech.rareCosts || {})) {
+          const field = RARE_MAP[k] || k;
+          if (v) c[field] = Math.round(v * factor);
+        }
+        return c;
+      })();
       const hasCost = Object.keys(cost).length > 0;
-      const timeSec = Math.round((tech.nextResearchTime || 0) * mult);
+      const rawTime = (tech.researchTime || 0) * Math.pow(tech.timeFactor || 1, effectiveLevel);
+      const timeSec = Math.round(rawTime * mult);
 
       // Branch header (only when showing all branches)
       if (state.resBranch === 'all' && tech.branch !== lastBranch) {
