@@ -338,10 +338,10 @@ tr:hover td { background: var(--bg3); }
   <button id="btn-refresh">⟳ Refresh</button>
 </div>
 
-<!-- Mode toggle -->
+<!-- Market tab toggle -->
 <div id="mode-bar">
-  <button class="mode-btn active" data-mode="buyer">Buyer — I want to acquire</button>
-  <button class="mode-btn" data-mode="seller">Seller — I want to offer</button>
+  <button class="mode-btn active" data-market="galactic">⬡ Galactic Market</button>
+  <button class="mode-btn" data-market="alliance">⚔ Alliance Market</button>
 </div>
 
 <!-- NPC reference -->
@@ -438,11 +438,12 @@ const RES_LABEL = {
 const BASE_URL = 'http://localhost:8765';
 
 // ── State ─────────────────────────────────────────────────────────────────
-let allOrders = [];
-let hubs      = {};
-let mode      = 'buyer';   // buyer | seller
-let sortCol   = 'ratio';
-let sortAsc   = false;
+let allOrders   = [];
+let hubs        = {};
+let market      = 'galactic';  // galactic | alliance
+let allianceHub = null;        // hub-status response
+let sortCol     = 'ratio';
+let sortAsc     = false;
 let lastUpdated = null;
 
 function makeHeaders() {
@@ -472,19 +473,45 @@ async function loadHubs() {
   }
 }
 
+async function loadAllianceHub() {
+  try {
+    const data = await fetchJSON('/api/alliance-trade/hub-status');
+    allianceHub = data;
+  } catch(e) {
+    console.warn('Could not load alliance hub status:', e);
+    allianceHub = null;
+  }
+}
+
 async function loadOrders() {
   const btn = document.getElementById('btn-refresh');
   btn.classList.add('loading');
   btn.textContent = '⟳ Loading...';
 
   try {
+    if (market === 'alliance') {
+      await loadAllianceOrders();
+    } else {
+      await loadGalacticOrders();
+    }
+  } catch(e) {
+    console.error('Load failed:', e);
+    showError(e.message);
+  } finally {
+    btn.classList.remove('loading');
+    btn.textContent = '⟳ Refresh';
+  }
+}
+
+async function loadGalacticOrders() {
+  try {
     let all = [];
     let offset = 0;
-    const limit = 25;  // API hard caps at 25 regardless of what we request
+    const limit = 25;
     let page = 1;
 
     while (true) {
-      console.log(`Fetching page ${page} (offset=${offset})...`);
+      console.log(`Fetching galactic page ${page} (offset=${offset})...`);
       const data = await fetchJSON(`/api/market/orders?limit=${limit}&offset=${offset}`);
       const orders = data.orders || [];
       const pg     = data.pagination || {};
@@ -492,38 +519,57 @@ async function loadOrders() {
       all = all.concat(orders);
 
       if (!pg.hasMore || orders.length === 0) break;
-
-      // Safety check — never fetch more than the stated total
       if (pg.total && all.length >= pg.total) break;
 
       offset += limit;
       page++;
-
-      // Hard safety cap — never exceed 50 pages (1250 orders)
-      if (page > 50) {
-        console.warn('Hit page cap — stopping pagination');
-        break;
-      }
+      if (page > 50) { console.warn('Hit page cap'); break; }
     }
 
-    console.log(`Total orders fetched: ${all.length}`);
-
+    console.log(`Total galactic orders fetched: ${all.length}`);
     allOrders   = all.map(enrichOrder);
     lastUpdated = new Date();
-    document.getElementById('s-total').textContent   = allOrders.length;
-    document.getElementById('s-updated').textContent =
-      lastUpdated.toLocaleTimeString();
-
-    updateFooterCounts();
     render();
-    showTable();
-
+    updateMeta();
   } catch(e) {
-    console.error('Failed to load orders:', e);
-    showEmpty(`Connection failed: ${e.message}. Check your token.`);
-  } finally {
-    btn.classList.remove('loading');
-    btn.textContent = '⟳ Refresh';
+    console.error('Galactic load failed:', e);
+    showError(e.message);
+  }
+}
+
+async function loadAllianceOrders() {
+  try {
+    await loadAllianceHub();
+
+    let all = [];
+    let offset = 0;
+    const limit = 25;
+    let page = 1;
+
+    while (true) {
+      console.log(`Fetching alliance page ${page} (offset=${offset})...`);
+      const data = await fetchJSON(`/api/alliance-trade/orders?limit=${limit}&offset=${offset}`);
+      const orders = data.orders || [];
+      const pg     = data.pagination || {};
+      console.log(`  Got ${orders.length} alliance orders. total=${pg.total} hasMore=${pg.hasMore}`);
+      all = all.concat(orders);
+
+      if (!pg.hasMore || orders.length === 0) break;
+      if (pg.total && all.length >= pg.total) break;
+
+      offset += limit;
+      page++;
+      if (page > 50) { console.warn('Hit page cap'); break; }
+    }
+
+    console.log(`Total alliance orders fetched: ${all.length}`);
+    allOrders   = all.map(enrichOrder);
+    lastUpdated = new Date();
+    render();
+    updateMeta();
+  } catch(e) {
+    console.error('Alliance load failed:', e);
+    showError(e.message);
   }
 }
 
@@ -687,27 +733,16 @@ function expiresIn(expiresAt) {
 }
 
 function buildHeader() {
-  const cols = mode === 'buyer'
-    ? [
-        { key:'seller',  label:'Seller' },
-        { key:'offer',   label:'Offering' },
-        { key:'amount',  label:'Amount' },
-        { key:'request', label:'Asking' },
-        { key:'ratio',   label:'vs NPC' },
-        { key:'hub',     label:'Hub' },
-        { key:'expires', label:'Expires' },
-        { key:'status',  label:'Status' },
-      ]
-    : [
-        { key:'seller',  label:'Posted By' },
-        { key:'request', label:'Requesting' },
-        { key:'amount',  label:'Amount' },
-        { key:'offer',   label:'For' },
-        { key:'ratio',   label:'vs NPC' },
-        { key:'hub',     label:'Hub' },
-        { key:'expires', label:'Expires' },
-        { key:'status',  label:'Status' },
-      ];
+  const cols = [
+    { key:'seller',  label:'Posted By' },
+    { key:'offer',   label:'Offering' },
+    { key:'amount',  label:'Amount' },
+    { key:'request', label:'Asking' },
+    { key:'ratio',   label:'vs NPC' },
+    { key:'hub',     label:'Hub' },
+    { key:'expires', label:'Expires' },
+    { key:'status',  label:'Status' },
+  ];
 
   document.getElementById('table-head').innerHTML = `
     <tr>${cols.map(c => `
@@ -734,43 +769,23 @@ function buildRows(orders) {
   }
 
   return orders.map(o => {
-    if (mode === 'buyer') {
-      return `<tr>
-        <td style="color:var(--text-dim)">${o.username}</td>
-        <td>${resPill(o.offerResource)}</td>
-        <td>
-          <span class="amt">${o.offerRemaining.toLocaleString()}</span>
-          ${o.offerRemaining < o.offerAmount
-            ? `<span class="amt-dim"> / ${o.offerAmount.toLocaleString()}</span>`
-            : ''}
-        </td>
-        <td>${resPill(o.requestResource)}
-          <span class="amt" style="margin-left:6px">${o.requestAmount.toLocaleString()}</span>
-        </td>
-        <td class="ratio-cell">${ratioCell(o)}</td>
-        <td>${hubLabel(o.hubId)}</td>
-        <td style="color:var(--text-dim)">${expiresIn(o.expiresAt)}</td>
-        <td>${statusBadge(o)}</td>
-      </tr>`;
-    } else {
-      return `<tr>
-        <td style="color:var(--text-dim)">${o.username}</td>
-        <td>${resPill(o.requestResource)}</td>
-        <td>
-          <span class="amt">${o.requestAmount.toLocaleString()}</span>
-        </td>
-        <td>${resPill(o.offerResource)}
-          <span class="amt" style="margin-left:6px">${o.offerRemaining.toLocaleString()}</span>
-          ${o.offerRemaining < o.offerAmount
-            ? `<span class="amt-dim"> / ${o.offerAmount.toLocaleString()}</span>`
-            : ''}
-        </td>
-        <td class="ratio-cell">${ratioCell(o)}</td>
-        <td>${hubLabel(o.hubId)}</td>
-        <td style="color:var(--text-dim)">${expiresIn(o.expiresAt)}</td>
-        <td>${statusBadge(o)}</td>
-      </tr>`;
-    }
+    return `<tr>
+      <td style="color:var(--text-dim)">${o.username}</td>
+      <td>${resPill(o.offerResource)}</td>
+      <td>
+        <span class="amt">${o.offerRemaining.toLocaleString()}</span>
+        ${o.offerRemaining < o.offerAmount
+          ? `<span class="amt-dim"> / ${o.offerAmount.toLocaleString()}</span>`
+          : ''}
+      </td>
+      <td>${resPill(o.requestResource)}
+        <span class="amt" style="margin-left:6px">${o.requestAmount.toLocaleString()}</span>
+      </td>
+      <td class="ratio-cell">${ratioCell(o)}</td>
+      <td>${hubLabel(o.hubId)}</td>
+      <td style="color:var(--text-dim)">${expiresIn(o.expiresAt)}</td>
+      <td>${statusBadge(o)}</td>
+    </tr>`;
   }).join('');
 }
 
@@ -806,6 +821,18 @@ function updateFooterCounts() {
   document.querySelector('#f-partial-count span').textContent = partial;
 }
 
+function updateMeta() {
+  document.getElementById('s-total').textContent   = allOrders.length;
+  document.getElementById('s-updated').textContent =
+    lastUpdated ? lastUpdated.toLocaleTimeString() : '—';
+  updateFooterCounts();
+  showTable();
+}
+
+function showError(msg) {
+  showEmpty(`Connection failed: ${msg}. Check your token and proxy.`);
+}
+
 function showTable() {
   document.getElementById('empty-state').style.display  = 'none';
   document.getElementById('market-table').style.display = 'table';
@@ -825,9 +852,11 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
   btn.addEventListener('click', function() {
     document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
     this.classList.add('active');
-    mode = this.dataset.mode;
+    market = this.dataset.market;
     sortCol = 'ratio'; sortAsc = false;
+    allOrders = [];
     render();
+    loadOrders();
   });
 });
 
