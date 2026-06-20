@@ -2,7 +2,7 @@
 // @name        NexStar Planner
 // @namespace   nexuslegacy-tools
 // @description Fleet, research, and building cost planner. Pulls live data from the game API — no setup required.
-// @version     0.5.3
+// @version     0.5.4
 // @match       https://*.nexuslegacy.space/*
 // @grant       GM_getValue
 // @grant       GM_setValue
@@ -17,7 +17,7 @@
 
   // ── Constants ──────────────────────────────────────────────────────────────
   const TOOL_NAME = 'NexStar Planner';
-  const VERSION   = '0.5.3';
+  const VERSION   = '0.5.4';
 
   const RES_KEYS = ['ore', 'silicates', 'hydrogen', 'alloys',
     'cryoIce', 'plasmaCore', 'bioExtract', 'darkMatter', 'quantumDust', 'antimatter'];
@@ -173,15 +173,22 @@
     const def = building.definition;
     if (!def) return {};
     const n  = building.level + 1; // target level
-    const sw = def.costDoubleAfter > 0 ? def.costDoubleAfter : 10;
     const cf = def.costFactor      || 1;
     const hf = def.highLevelFactor || cf;
+    const da = def.costDoubleAfter || 0;
 
     let factor;
-    if (n <= sw) {
-      factor = Math.pow(cf, n - 1);
+    if (da > 0) {
+      // costDoubleAfter: one-time extra cf multiplication when crossing that level
+      factor = Math.pow(cf, n - 1) * (n > da ? cf : 1);
     } else {
-      factor = Math.pow(cf, sw - 1) * Math.pow(hf, n - sw);
+      // No costDoubleAfter: switch to highLevelFactor at level 10
+      const sw = 10;
+      if (n <= sw) {
+        factor = Math.pow(cf, n - 1);
+      } else {
+        factor = Math.pow(cf, sw - 1) * Math.pow(hf, n - sw);
+      }
     }
 
     const c = {};
@@ -390,6 +397,7 @@
       letter-spacing: 0.06em;
       margin-right: 4px;
     }
+    #nxp-header .nxp-planet {
       font-size: 10px;
       color: #5a6a7a;
       letter-spacing: 0.06em;
@@ -1047,10 +1055,8 @@
       const atMax          = nextLevel > tech.maxLevel;
 
       const cost = (() => {
-        // costDoubleAfter = one-time extra cf multiplication when crossing that level
-        const cf = tech.costFactor || 1;
-        const da = tech.costDoubleAfter || 0;
-        const factor = Math.pow(cf, nextLevel - 1) * (da > 0 && nextLevel > da ? cf : 1);
+        // Scale cost to the next level after any already queued
+        const factor = Math.pow(tech.costFactor || 1, effectiveLevel);
         const c = {};
         if (tech.costOre)       c.ore       = Math.round(tech.costOre       * factor);
         if (tech.costSilicates) c.silicates = Math.round(tech.costSilicates * factor);
@@ -1483,16 +1489,19 @@
       // Check against maxLevel
       if (nextLevel > tech.maxLevel) return;
 
-      // costDoubleAfter = one-time extra cf multiplication when crossing that level
-      const cf = tech.costFactor || 1;
-      const da = tech.costDoubleAfter || 0;
-      const factor = Math.pow(cf, nextLevel - 1) * (da > 0 && nextLevel > da ? cf : 1);
+      // Scale cost using costFactor ^ queued (same formula as the API uses per level)
+      const baseCost = {
+        ore: tech.costOre, silicates: tech.costSilicates,
+        hydrogen: tech.costHydrogen, alloys: tech.costAlloys,
+      };
+      const rareCosts = tech.rareCosts || {};
+      const factor = Math.pow(tech.costFactor || 1, effectiveLevel);
       const cost = {};
-      if (tech.costOre)       cost.ore       = Math.round(tech.costOre       * factor);
-      if (tech.costSilicates) cost.silicates = Math.round(tech.costSilicates * factor);
-      if (tech.costHydrogen)  cost.hydrogen  = Math.round(tech.costHydrogen  * factor);
-      if (tech.costAlloys)    cost.alloys    = Math.round(tech.costAlloys    * factor);
-      for (const [k, v] of Object.entries(tech.rareCosts || {})) {
+      if (baseCost.ore)       cost.ore       = Math.round(baseCost.ore       * factor);
+      if (baseCost.silicates) cost.silicates = Math.round(baseCost.silicates * factor);
+      if (baseCost.hydrogen)  cost.hydrogen  = Math.round(baseCost.hydrogen  * factor);
+      if (baseCost.alloys)    cost.alloys    = Math.round(baseCost.alloys    * factor);
+      for (const [k, v] of Object.entries(rareCosts)) {
         const field = RARE_MAP[k] || k;
         if (v) cost[field] = Math.round(v * factor);
       }
