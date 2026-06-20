@@ -2,7 +2,7 @@
 // @name        NexStar Planner
 // @namespace   nexuslegacy-tools
 // @description Fleet, research, and building cost planner. Pulls live data from the game API — no setup required.
-// @version     0.5.0
+// @version     0.5.1
 // @match       https://*.nexuslegacy.space/*
 // @grant       GM_getValue
 // @grant       GM_setValue
@@ -17,7 +17,7 @@
 
   // ── Constants ──────────────────────────────────────────────────────────────
   const TOOL_NAME = 'NexStar Planner';
-  const VERSION   = '0.5.0';
+  const VERSION   = '0.5.1';
 
   const RES_KEYS = ['ore', 'silicates', 'hydrogen', 'alloys',
     'cryoIce', 'plasmaCore', 'bioExtract', 'darkMatter', 'quantumDust', 'antimatter'];
