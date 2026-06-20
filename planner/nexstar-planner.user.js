@@ -2,7 +2,7 @@
 // @name        NexStar Planner
 // @namespace   nexuslegacy-tools
 // @description Fleet, research, and building cost planner. Pulls live data from the game API — no setup required.
-// @version     0.5.1
+// @version     0.5.2
 // @match       https://*.nexuslegacy.space/*
 // @grant       GM_getValue
 // @grant       GM_setValue
@@ -17,7 +17,7 @@
 
   // ── Constants ──────────────────────────────────────────────────────────────
   const TOOL_NAME = 'NexStar Planner';
-  const VERSION   = '0.5.1';
+  const VERSION   = '0.5.2';
 
   const RES_KEYS = ['ore', 'silicates', 'hydrogen', 'alloys',
     'cryoIce', 'plasmaCore', 'bioExtract', 'darkMatter', 'quantumDust', 'antimatter'];
@@ -1047,8 +1047,16 @@
       const atMax          = nextLevel > tech.maxLevel;
 
       const cost = (() => {
-        // Scale cost to the next level after any already queued
-        const factor = Math.pow(tech.costFactor || 1, effectiveLevel);
+        // Same switchover logic as addResearch and buildings
+        const sw = tech.costDoubleAfter > 0 ? tech.costDoubleAfter : 0;
+        const cf = tech.costFactor || 1;
+        const hf = tech.highLevelFactor || cf;
+        let factor;
+        if (!sw || nextLevel <= sw) {
+          factor = Math.pow(cf, nextLevel - 1);
+        } else {
+          factor = Math.pow(cf, sw - 1) * Math.pow(hf, nextLevel - sw);
+        }
         const c = {};
         if (tech.costOre)       c.ore       = Math.round(tech.costOre       * factor);
         if (tech.costSilicates) c.silicates = Math.round(tech.costSilicates * factor);
@@ -1481,19 +1489,24 @@
       // Check against maxLevel
       if (nextLevel > tech.maxLevel) return;
 
-      // Scale cost using costFactor ^ queued (same formula as the API uses per level)
-      const baseCost = {
-        ore: tech.costOre, silicates: tech.costSilicates,
-        hydrogen: tech.costHydrogen, alloys: tech.costAlloys,
-      };
-      const rareCosts = tech.rareCosts || {};
-      const factor = Math.pow(tech.costFactor || 1, effectiveLevel);
+      // Same switchover logic as buildings:
+      // costDoubleAfter > 0 → switch at that level; 0 → pure costFactor throughout
+      const sw = tech.costDoubleAfter > 0 ? tech.costDoubleAfter : 0;
+      const cf = tech.costFactor || 1;
+      const hf = tech.highLevelFactor || cf;
+      let factor;
+      if (!sw || nextLevel <= sw) {
+        factor = Math.pow(cf, nextLevel - 1);
+      } else {
+        factor = Math.pow(cf, sw - 1) * Math.pow(hf, nextLevel - sw);
+      }
+
       const cost = {};
-      if (baseCost.ore)       cost.ore       = Math.round(baseCost.ore       * factor);
-      if (baseCost.silicates) cost.silicates = Math.round(baseCost.silicates * factor);
-      if (baseCost.hydrogen)  cost.hydrogen  = Math.round(baseCost.hydrogen  * factor);
-      if (baseCost.alloys)    cost.alloys    = Math.round(baseCost.alloys    * factor);
-      for (const [k, v] of Object.entries(rareCosts)) {
+      if (tech.costOre)       cost.ore       = Math.round(tech.costOre       * factor);
+      if (tech.costSilicates) cost.silicates = Math.round(tech.costSilicates * factor);
+      if (tech.costHydrogen)  cost.hydrogen  = Math.round(tech.costHydrogen  * factor);
+      if (tech.costAlloys)    cost.alloys    = Math.round(tech.costAlloys    * factor);
+      for (const [k, v] of Object.entries(tech.rareCosts || {})) {
         const field = RARE_MAP[k] || k;
         if (v) cost[field] = Math.round(v * factor);
       }
