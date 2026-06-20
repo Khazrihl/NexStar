@@ -2,7 +2,7 @@
 // @name        NexStar Planner
 // @namespace   nexuslegacy-tools
 // @description Fleet, research, and building cost planner. Pulls live data from the game API — no setup required.
-// @version     0.2.0
+// @version     0.3.0
 // @match       https://*.nexuslegacy.space/*
 // @grant       GM_getValue
 // @grant       GM_setValue
@@ -1211,6 +1211,15 @@
       body += `<div class="nxp-status-row">⬡ ${pname} · ${rateStr}</div>`;
     }
 
+    // Preserve focused search input and scroll position before wiping innerHTML
+    const activeSearch = document.activeElement;
+    const focusedSearch = activeSearch && activeSearch.dataset && activeSearch.dataset.search
+      ? activeSearch.dataset.search : null;
+    const selStart = focusedSearch ? activeSearch.selectionStart : null;
+    const selEnd   = focusedSearch ? activeSearch.selectionEnd   : null;
+    const scrollTop = panel.querySelector('#nxp-body')
+      ? panel.querySelector('#nxp-body').scrollTop : 0;
+
     panel.innerHTML = `
       <div id="nxp-header">
         <span class="nxp-title">⬡ NexStar Planner</span>
@@ -1220,6 +1229,19 @@
       </div>
       <div id="nxp-tabs">${tabsHtml}</div>
       <div id="nxp-body">${body}</div>`;
+
+    // Restore scroll position
+    const bodyEl = panel.querySelector('#nxp-body');
+    if (bodyEl) bodyEl.scrollTop = scrollTop;
+
+    // Restore focus to the search input that was active
+    if (focusedSearch) {
+      const el = panel.querySelector(`[data-search="${focusedSearch}"]`);
+      if (el) {
+        el.focus();
+        try { el.setSelectionRange(selStart, selEnd); } catch (e) { /* */ }
+      }
+    }
   }
 
   // ── Event delegation (avoids CSP issues with inline onclick) ──────────────
