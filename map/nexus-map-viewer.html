@@ -211,13 +211,10 @@
   #results-count { color: var(--accent); }
 
   .result-item {
-    padding: 4px 8px;
+    padding: 6px 8px;
     border-bottom: 1px solid var(--border);
     cursor: pointer;
     transition: background 0.1s;
-    display: flex;
-    align-items: center;
-    gap: 5px;
   }
   .result-item:hover { background: var(--bg3); }
   .result-item.active { background: rgba(245,158,11,0.08); border-left: 2px solid var(--accent); }
@@ -225,8 +222,12 @@
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--text-head);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .result-name-text {
     flex: 1;
-    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -235,6 +236,33 @@
     font-size: 9px;
     color: var(--accent);
     flex-shrink: 0;
+  }
+  .result-players {
+    margin-top: 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .result-player {
+    font-size: 9px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 11px;
+  }
+  .result-player .player-tag {
+    color: var(--text-dim);
+    opacity: 0.6;
+  }
+  .result-player.is-home { color: var(--sentinel); }
+  .result-empty {
+    padding: 20px 10px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.7;
   }
 
   /* ── Right sidebar (results) ─────────────────────────────────────────────── */
@@ -312,39 +340,51 @@
   /* ── Master search ───────────────────────────────────────────────────────── */
   #search-wrap {
     position: relative;
-    padding: 10px 14px 2px;
+    padding: 10px 14px 8px;
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
+    background: var(--bg2);
   }
   #f-search {
     width: 100%;
-    background: var(--bg3);
+    background: var(--bg);
     border: 1px solid var(--border2);
-    border-radius: 4px;
+    border-radius: 5px;
     color: var(--text);
     font-family: var(--font-mono);
-    font-size: 11px;
-    padding: 5px 24px 5px 8px;
+    font-size: 12px;
+    padding: 7px 26px 7px 10px;
     outline: none;
-    transition: border-color 0.15s;
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
-  #f-search:focus { border-color: var(--accent); }
+  #f-search:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(245,158,11,0.15);
+  }
+  #f-search::placeholder { color: var(--text-dim); }
   #f-search-clear {
     position: absolute;
     right: 20px;
-    top: 50%;
-    transform: translateY(-20%);
+    top: 18px;
     cursor: pointer;
     color: var(--text-dim);
     font-size: 14px;
     display: none;
+    line-height: 1;
   }
   #f-search-clear:hover { color: var(--text); }
+  #search-hint {
+    font-size: 9px;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    margin-top: 4px;
+    opacity: 0.7;
+  }
   #search-dropdown {
     display: none;
     position: absolute;
     left: 14px; right: 14px;
-    top: 100%;
+    top: calc(100% - 8px);
     background: var(--bg2);
     border: 1px solid var(--border2);
     border-radius: 4px;
@@ -749,6 +789,7 @@
     <div id="search-wrap">
       <input type="text" id="f-search" placeholder="System, player, [TAG], sector…" autocomplete="off" spellcheck="false">
       <span id="f-search-clear">×</span>
+      <div id="search-hint">↵ select · ↵↵ cycle player colonies · esc close</div>
       <div id="search-dropdown"></div>
     </div>
 
@@ -1288,7 +1329,6 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   document.getElementById('popup-zone').textContent  = '';
   document.getElementById('popup-zone').className    = '';
   document.getElementById('popup-body').innerHTML    = 'Click any system on the map to view its details here.';
-  document.querySelectorAll('.result-item').forEach(el => el.classList.remove('active'));
   applyFilters();
 });
 
@@ -1363,31 +1403,93 @@ function applyFilters() {
   if (!allSystems.length) return;
   const f = getFilters();
   filteredSystems = allSystems.filter(s => systemPasses(s, f));
-  document.getElementById('results-count').textContent = filteredSystems.length.toLocaleString();
   buildResultsList();
   drawMap();
 }
 
 // ── Results list ──────────────────────────────────────────────────────────────
 function buildResultsList() {
-  const panel = resultsPl;
+  const panel  = resultsPl;
+  const header = document.getElementById('results-count');
   panel.innerHTML = '';
 
-  const sorted = [...filteredSystems].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  sorted.forEach(s => {
+  const f      = getFilters();
+  const hasArm = !!f.arm;
+  const hasSec = !!f.sector;
+  const hasSel = !!selectedSystem;
+  const homeTag = CONFIG.HOME_ALLIANCE.toUpperCase();
+
+  // Determine which systems to show and the label
+  let systems = [];
+  let label   = '—';
+  let context = 'none'; // none | arm | sector | system
+
+  if (hasSel) {
+    // System selected — show all systems in the same sector
+    const secId = selectedSystem.sectorId;
+    systems = allSystems.filter(s => s.sectorId === secId)
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    const parsed = parseSystemName(selectedSystem.name);
+    label   = parsed ? `${parsed.arm}${parsed.sector}` : 'Sector';
+    context = 'system';
+  } else if (hasSec && hasArm) {
+    // Arm + sector filter active
+    systems = filteredSystems.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    label   = `${f.arm}${f.sector}`;
+    context = 'sector';
+  } else if (hasArm) {
+    // Arm filter only
+    systems = filteredSystems.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    label   = `${f.arm} arm`;
+    context = 'arm';
+  } else {
+    // Nothing selected — show empty prompt
+    header.textContent = '—';
+    panel.innerHTML = `<div class="result-empty">Select a system,<br>filter by arm or sector<br>to see systems here.</div>`;
+    return;
+  }
+
+  header.textContent = systems.length.toLocaleString();
+
+  if (!systems.length) {
+    panel.innerHTML = `<div class="result-empty">No systems found.</div>`;
+    return;
+  }
+
+  systems.forEach(s => {
     const div = document.createElement('div');
     div.className = 'result-item' + (selectedSystem && selectedSystem.id === s.id ? ' active' : '');
+
     const zone     = (s.securityZone || 'unknown').toLowerCase();
-    const colonies = s.planets.filter(p => p.userId).length;
     const dotColor = zone === 'open' ? 'var(--open)'
                    : zone === 'sentinel' ? 'var(--sentinel)'
                    : zone === 'dead' ? 'var(--dead)'
                    : zone === 'rift' ? 'var(--rift)'
                    : 'var(--text-dim)';
+
+    const colonies = s.planets.filter(p => p.userId);
+    const colCount = colonies.length;
+
+    // Build player name lines
+    let playersHtml = '';
+    if (colCount > 0) {
+      playersHtml = '<div class="result-players">';
+      colonies.sort((a, b) => (a.position || 0) - (b.position || 0)).forEach(p => {
+        const isHome = (p.ownerAllianceTag || '').toUpperCase() === homeTag;
+        const tag    = p.ownerAllianceTag ? ` <span class="player-tag">[${p.ownerAllianceTag}]</span>` : '';
+        playersHtml += `<div class="result-player ${isHome ? 'is-home' : ''}">⚑ ${p.ownerName || '?'}${tag}</div>`;
+      });
+      playersHtml += '</div>';
+    }
+
     div.innerHTML = `
-      <span style="width:6px;height:6px;border-radius:50%;background:${dotColor};flex-shrink:0;display:inline-block"></span>
-      <span class="result-name">${s.name || 'System ' + s.id}</span>
-      ${colonies ? `<span class="result-colony">${colonies}c</span>` : ''}`;
+      <div class="result-name">
+        <span style="width:6px;height:6px;border-radius:50%;background:${dotColor};flex-shrink:0;display:inline-block"></span>
+        <span class="result-name-text">${s.name || 'System ' + s.id}</span>
+        ${colCount ? `<span class="result-colony">${colCount}c</span>` : ''}
+      </div>
+      ${playersHtml}`;
+
     div.addEventListener('click', () => selectSystem(s, true));
     panel.appendChild(div);
   });
@@ -1722,20 +1824,20 @@ function drawMap() {
 function selectSystem(s, panTo) {
   selectedSystem = s;
 
-  // Highlight result list item
-  document.querySelectorAll('.result-item').forEach(el => el.classList.remove('active'));
-  const items = [...document.querySelectorAll('.result-item')];
-  const match = items.find(el => el.querySelector('.result-name')?.textContent === (s.name || 'System '+s.id));
-  if (match) {
-    match.classList.add('active');
-    match.scrollIntoView({ block: 'nearest' });
-  }
-
   if (panTo) {
     const rect = mapArea.getBoundingClientRect();
     viewX = rect.width  * 0.55 - s.x * viewScale;
     viewY = rect.height * 0.5  - s.y * viewScale;
   }
+
+  // Rebuild results list so sector systems appear and active item is highlighted
+  buildResultsList();
+
+  // Scroll active item into view
+  setTimeout(() => {
+    const active = resultsPl.querySelector('.result-item.active');
+    if (active) active.scrollIntoView({ block: 'nearest' });
+  }, 0);
 
   showPopup(s);
   drawMap();
@@ -1872,7 +1974,7 @@ document.getElementById('popup-close').addEventListener('click', () => {
   document.getElementById('popup-zone').textContent  = '';
   document.getElementById('popup-zone').className    = '';
   document.getElementById('popup-body').innerHTML    = 'Click any system on the map to view its details here.';
-  document.querySelectorAll('.result-item').forEach(el => el.classList.remove('active'));
+  buildResultsList();
   drawMap();
 });
 
@@ -1984,10 +2086,13 @@ function handleMapClick(e) {
   if (best) {
     selectSystem(best, false);
   } else {
-    popup.classList.remove('visible');
     selectedSystem = null;
+    buildResultsList();
     drawMap();
-    document.querySelectorAll('.result-item').forEach(el => el.classList.remove('active'));
+    document.getElementById('popup-title').textContent = 'Select a system';
+    document.getElementById('popup-zone').textContent  = '';
+    document.getElementById('popup-zone').className    = '';
+    document.getElementById('popup-body').innerHTML    = 'Click any system on the map to view its details here.';
   }
 }
 
