@@ -23,6 +23,8 @@ ALLOWED_PATHS = [
     '/api/market/orders',
     '/api/market/hubs',
     '/api/market/my-balances',
+    '/api/alliance-trade/orders',
+    '/api/alliance-trade/hub-status',
 ]
 
 # ── Load token ────────────────────────────────────────────────────────────

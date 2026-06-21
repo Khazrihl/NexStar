@@ -279,7 +279,7 @@ tr:hover td { background: var(--bg3); }
 .ratio-fill.r-yellow { background: #fdd835; }
 .ratio-fill.r-green  { background: #43a047; }
 .ratio-fill.r-blue   { background: #1e88e5; }
-.ratio-fill.r-white  { background: #e0e0e0; }
+.ratio-fill.r-white  { background: #ffffff; }
 .ratio-fill.r-purple { background: #8e24aa; }
 .ratio-val {
   font-size: 11px;
@@ -292,7 +292,7 @@ tr:hover td { background: var(--bg3); }
 .ratio-val.r-yellow { color: #fdd835; }
 .ratio-val.r-green  { color: #43a047; }
 .ratio-val.r-blue   { color: #1e88e5; }
-.ratio-val.r-white  { color: #e0e0e0; }
+.ratio-val.r-white  { color: #ffffff; }
 .ratio-val.r-purple { color: #c084fc; }
 .ratio-est { font-size: 9px; color: var(--text-dim); }
 
@@ -357,6 +357,14 @@ tr:hover td { background: var(--bg3); }
   <span class="npc-rate estimated">Dark Matter ~×20 est.</span>
   <span class="npc-rate estimated">Antimatter ~×25 est.</span>
   <span class="npc-rate estimated">Quantum Dust ~×30 est.</span>
+</div>
+
+<div id="alliance-bar" style="display:none;background:#0d1118;border-bottom:1px solid #1a2535;padding:6px 20px;font-size:11px;color:#5a6a7a;display:none;align-items:center;gap:16px">
+  <span style="color:#e8a838;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;font-size:10px">⚔ Alliance Hub</span>
+  <span id="ah-owner"></span>
+  <span id="ah-planet"></span>
+  <span id="ah-level"></span>
+  <span id="ah-orders" style="margin-left:auto"></span>
 </div>
 
 <!-- Filters -->
@@ -446,6 +454,9 @@ let sortCol     = 'ratio';
 let sortAsc     = false;
 let lastUpdated = null;
 
+// Cache — keyed by market name, stores { orders, allianceHub, lastUpdated }
+const cache = { galactic: null, alliance: null };
+
 function makeHeaders() {
   return {
     'accept': 'application/json',
@@ -484,6 +495,7 @@ async function loadAllianceHub() {
 }
 
 async function loadOrders() {
+  // Always fetches fresh — called by refresh button and init
   const btn = document.getElementById('btn-refresh');
   btn.classList.add('loading');
   btn.textContent = '⟳ Loading...';
@@ -503,25 +515,45 @@ async function loadOrders() {
   }
 }
 
+function switchMarket(newMarket) {
+  // Switch tabs — restore from cache if available, otherwise fetch
+  market = newMarket;
+  sortCol = 'ratio'; sortAsc = false;
+
+  if (cache[market]) {
+    allOrders   = cache[market].orders;
+    allianceHub = cache[market].allianceHub || null;
+    lastUpdated = cache[market].lastUpdated;
+    render();
+    updateMeta();
+  } else {
+    allOrders = [];
+    render();
+    loadOrders();
+  }
+}
+
 async function loadGalacticOrders() {
   try {
     let all = [];
-    let offset = 0;
-    const limit = 25;
     let page = 1;
+    const limit = 25;
 
     while (true) {
-      console.log(`Fetching galactic page ${page} (offset=${offset})...`);
-      const data = await fetchJSON(`/api/market/orders?limit=${limit}&offset=${offset}`);
+      console.log(`Fetching galactic page ${page}...`);
+      const data = await fetchJSON(`/api/market/orders?limit=${limit}&page=${page}`);
       const orders = data.orders || [];
       const pg     = data.pagination || {};
-      console.log(`  Got ${orders.length} orders. total=${pg.total} hasMore=${pg.hasMore}`);
-      all = all.concat(orders);
+      console.log(`  Got ${orders.length} orders. total=${pg.total} hasMore=${pg.hasMore} offset=${pg.offset}`);
 
-      if (!pg.hasMore || orders.length === 0) break;
+      // Deduplicate by id in case API returns overlapping pages
+      const existingIds = new Set(all.map(o => o.id));
+      const newOrders = orders.filter(o => !existingIds.has(o.id));
+      all = all.concat(newOrders);
+
+      if (!pg.hasMore || orders.length === 0 || newOrders.length === 0) break;
       if (pg.total && all.length >= pg.total) break;
 
-      offset += limit;
       page++;
       if (page > 50) { console.warn('Hit page cap'); break; }
     }
@@ -529,6 +561,7 @@ async function loadGalacticOrders() {
     console.log(`Total galactic orders fetched: ${all.length}`);
     allOrders   = all.map(enrichOrder);
     lastUpdated = new Date();
+    cache.galactic = { orders: allOrders, lastUpdated, allianceHub: null };
     render();
     updateMeta();
   } catch(e) {
@@ -542,22 +575,23 @@ async function loadAllianceOrders() {
     await loadAllianceHub();
 
     let all = [];
-    let offset = 0;
-    const limit = 25;
     let page = 1;
+    const limit = 25;
 
     while (true) {
-      console.log(`Fetching alliance page ${page} (offset=${offset})...`);
-      const data = await fetchJSON(`/api/alliance-trade/orders?limit=${limit}&offset=${offset}`);
+      console.log(`Fetching alliance page ${page}...`);
+      const data = await fetchJSON(`/api/alliance-trade/orders?limit=${limit}&page=${page}`);
       const orders = data.orders || [];
       const pg     = data.pagination || {};
       console.log(`  Got ${orders.length} alliance orders. total=${pg.total} hasMore=${pg.hasMore}`);
-      all = all.concat(orders);
 
-      if (!pg.hasMore || orders.length === 0) break;
+      const existingIds = new Set(all.map(o => o.id));
+      const newOrders = orders.filter(o => !existingIds.has(o.id));
+      all = all.concat(newOrders);
+
+      if (!pg.hasMore || orders.length === 0 || newOrders.length === 0) break;
       if (pg.total && all.length >= pg.total) break;
 
-      offset += limit;
       page++;
       if (page > 50) { console.warn('Hit page cap'); break; }
     }
@@ -565,6 +599,7 @@ async function loadAllianceOrders() {
     console.log(`Total alliance orders fetched: ${all.length}`);
     allOrders   = all.map(enrichOrder);
     lastUpdated = new Date();
+    cache.alliance = { orders: allOrders, lastUpdated, allianceHub };
     render();
     updateMeta();
   } catch(e) {
@@ -597,8 +632,9 @@ function enrichOrder(o) {
     estimated = offerEst || requestEst;
   }
 
+  const remaining = o.offerRemaining ?? o.offerAmount;
   const fillPct = o.offerAmount > 0
-    ? Math.round((1 - o.offerRemaining / o.offerAmount) * 100)
+    ? Math.round((1 - remaining / o.offerAmount) * 100)
     : 0;
 
   return { ...o, rawRate, npcRatio, estimated, fillPct };
@@ -769,20 +805,23 @@ function buildRows(orders) {
   }
 
   return orders.map(o => {
+    const remaining = o.offerRemaining ?? o.offerAmount;
+    const isPartial = o.offerRemaining != null && o.offerRemaining < o.offerAmount;
+    const hubCell   = o.hubId != null
+      ? hubLabel(o.hubId)
+      : `<span style="color:var(--text-dim);font-size:10px">${o.systemName || '—'}</span>`;
     return `<tr>
-      <td style="color:var(--text-dim)">${o.username}</td>
+      <td style="color:var(--text-dim)">${o.username}${o.planetName ? `<br><span style="font-size:10px;opacity:0.5">${o.planetName}</span>` : ''}</td>
       <td>${resPill(o.offerResource)}</td>
       <td>
-        <span class="amt">${o.offerRemaining.toLocaleString()}</span>
-        ${o.offerRemaining < o.offerAmount
-          ? `<span class="amt-dim"> / ${o.offerAmount.toLocaleString()}</span>`
-          : ''}
+        <span class="amt">${remaining.toLocaleString()}</span>
+        ${isPartial ? `<span class="amt-dim"> / ${o.offerAmount.toLocaleString()}</span>` : ''}
       </td>
       <td>${resPill(o.requestResource)}
         <span class="amt" style="margin-left:6px">${o.requestAmount.toLocaleString()}</span>
       </td>
       <td class="ratio-cell">${ratioCell(o)}</td>
-      <td>${hubLabel(o.hubId)}</td>
+      <td>${hubCell}</td>
       <td style="color:var(--text-dim)">${expiresIn(o.expiresAt)}</td>
       <td>${statusBadge(o)}</td>
     </tr>`;
@@ -803,7 +842,7 @@ function render() {
   if (bestRatio) {
     const bd = document.getElementById('f-best-deal');
     const cls = bestRatio.npcRatio >= 3.0 ? 'color:#c084fc'
-              : bestRatio.npcRatio >= 2.0 ? 'color:#e0e0e0'
+              : bestRatio.npcRatio >= 2.0 ? 'color:#ffffff'
               : bestRatio.npcRatio >= 1.5 ? 'color:#1e88e5'
               : bestRatio.npcRatio >= 1.0 ? 'color:#43a047'
               : bestRatio.npcRatio >= 0.8 ? 'color:#fdd835'
@@ -827,6 +866,19 @@ function updateMeta() {
     lastUpdated ? lastUpdated.toLocaleTimeString() : '—';
   updateFooterCounts();
   showTable();
+
+  // Toggle NPC bar vs Alliance hub bar
+  const isAlliance = market === 'alliance';
+  document.getElementById('npc-bar').style.display       = isAlliance ? 'none' : 'flex';
+  document.getElementById('alliance-bar').style.display  = isAlliance ? 'flex' : 'none';
+
+  if (isAlliance && allianceHub) {
+    document.getElementById('ah-owner').textContent  = `Owner: ${allianceHub.hubOwner}`;
+    document.getElementById('ah-planet').textContent = `Planet: ${allianceHub.hubPlanet}`;
+    document.getElementById('ah-level').textContent  = `Lv ${allianceHub.hubLevel}`;
+    document.getElementById('ah-orders').textContent =
+      `${allianceHub.activeOrderCount} / ${allianceHub.orderCapacity} orders`;
+  }
 }
 
 function showError(msg) {
@@ -852,11 +904,7 @@ document.querySelectorAll('.mode-btn').forEach(btn => {
   btn.addEventListener('click', function() {
     document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
     this.classList.add('active');
-    market = this.dataset.market;
-    sortCol = 'ratio'; sortAsc = false;
-    allOrders = [];
-    render();
-    loadOrders();
+    switchMarket(this.dataset.market);
   });
 });
 
