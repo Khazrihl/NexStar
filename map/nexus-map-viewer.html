@@ -199,9 +199,9 @@
     position: sticky;
     top: 0;
     background: var(--bg2);
-    padding: 8px 14px;
+    padding: 5px 8px;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9px;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--text-dim);
@@ -211,32 +211,44 @@
   #results-count { color: var(--accent); }
 
   .result-item {
-    padding: 7px 14px;
+    padding: 4px 8px;
     border-bottom: 1px solid var(--border);
     cursor: pointer;
     transition: background 0.1s;
+    display: flex;
+    align-items: center;
+    gap: 5px;
   }
   .result-item:hover { background: var(--bg3); }
   .result-item.active { background: rgba(245,158,11,0.08); border-left: 2px solid var(--accent); }
   .result-name {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-head);
-    margin-bottom: 2px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .result-meta {
-    font-size: 10px;
-    color: var(--text-dim);
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
+  .result-colony {
+    font-size: 9px;
+    color: var(--accent);
+    flex-shrink: 0;
   }
-  .result-meta .zone-open    { color: var(--open); }
-  .result-meta .zone-sentinel{ color: var(--sentinel); }
-  .result-meta .zone-dead    { color: var(--dead); }
-  .result-meta .zone-rift    { color: var(--rift); }
 
-  /* ── Map area ─────────────────────────────────────────────────────────────── */
+  /* ── Right sidebar (results) ─────────────────────────────────────────────── */
+  #results-sidebar {
+    width: 160px;
+    flex-shrink: 0;
+    background: var(--bg2);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Map area ──────────────────────────────────────────────────────────────*/
   #map-area {
     flex: 1;
     position: relative;
@@ -271,30 +283,87 @@
   }
   .map-btn:hover { border-color: var(--accent); color: var(--accent); }
 
-  /* ── Popup ───────────────────────────────────────────────────────────────── */
+  /* ── Popup (draggable persistent pane) ──────────────────────────────────── */
   #popup {
-    position: absolute;
-    top: 0; left: 0;
-    width: 340px;
-    max-height: calc(100% - 28px);
+    position: fixed;
+    width: 320px;
+    max-height: 480px;
     background: var(--bg2);
     border: 1px solid var(--border2);
     border-radius: 6px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-    display: none;
+    display: flex;
     flex-direction: column;
-    z-index: 10;
+    z-index: 100;
     pointer-events: all;
+    user-select: none;
   }
-  #popup.visible { display: flex; }
   #popup-header {
-    padding: 10px 12px;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
     gap: 8px;
     flex-shrink: 0;
+    cursor: grab;
   }
+  #popup-header:active { cursor: grabbing; }
+
+  /* ── Master search ───────────────────────────────────────────────────────── */
+  #search-wrap {
+    position: relative;
+    padding: 10px 14px 2px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #f-search {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 5px 24px 5px 8px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  #f-search:focus { border-color: var(--accent); }
+  #f-search-clear {
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-20%);
+    cursor: pointer;
+    color: var(--text-dim);
+    font-size: 14px;
+    display: none;
+  }
+  #f-search-clear:hover { color: var(--text); }
+  #search-dropdown {
+    display: none;
+    position: absolute;
+    left: 14px; right: 14px;
+    top: 100%;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 200;
+    max-height: 240px;
+    overflow-y: auto;
+  }
+  .search-item {
+    padding: 5px 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+  .search-item:hover { background: var(--bg3); }
+  .search-item:last-child { border-bottom: none; }
   #popup-title {
     font-family: var(--font-mono);
     font-size: 13px;
@@ -589,6 +658,31 @@
     height: 14px;
   }
 
+  /* ── Scrollbars ──────────────────────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  /* ── Empty state ─────────────────────────────────────────────────────────── */
+  #empty-state {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    pointer-events: none;
+  }
+  #empty-state .big { font-size: 48px; opacity: 0.15; }
+  #empty-state p {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align: center;
+    line-height: 1.7;
+  }
+
   /* ── Loading spinner ─────────────────────────────────────────────────────── */
   #loading-state {
     position: absolute;
@@ -618,30 +712,9 @@
     line-height: 1.7;
     animation: pulse 1.8s ease-in-out infinite;
   }
-
-  /* ── Scrollbars ──────────────────────────────────────────────────────────── */
-  ::-webkit-scrollbar { width: 4px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-  /* ── Empty state ─────────────────────────────────────────────────────────── */
-  #empty-state {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    pointer-events: none;
-  }
-  #empty-state .big { font-size: 48px; opacity: 0.15; }
-  #empty-state p {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--text-dim);
-    text-align: center;
-    line-height: 1.7;
+  @keyframes pulse {
+    0%, 100% { opacity: 0.5; }
+    50%       { opacity: 1.0; }
   }
 </style>
 </head>
@@ -669,9 +742,15 @@
 
     <div id="load-zone" onclick="document.getElementById('file-input').click()">
       <div class="icon">🗂️</div>
-      <p><strong>Load nexus-map-clean.json</strong><br>Click or drag & drop</p>
+      <p><strong>Load local override</strong><br>Click or drag & drop a nexus-map-clean.json</p>
     </div>
     <input type="file" id="file-input" accept=".json">
+
+    <div id="search-wrap">
+      <input type="text" id="f-search" placeholder="System, player, [TAG], sector…" autocomplete="off" spellcheck="false">
+      <span id="f-search-clear">×</span>
+      <div id="search-dropdown"></div>
+    </div>
 
     <div class="sidebar-section">
       <div class="section-label">Filters</div>
@@ -756,7 +835,7 @@
 
       <div class="filter-checks">
         <label class="check-label">
-          <input type="checkbox" id="f-colonized" checked>
+          <input type="checkbox" id="f-colonized">
           Colonized systems only
         </label>
         <label class="check-label">
@@ -765,7 +844,7 @@
         </label>
       </div>
 
-      <button id="btn-clear">Clear All Filters</button>
+      <button id="btn-clear">Clear All</button>
     </div>
 
     <!-- Legend -->
@@ -827,12 +906,6 @@
       <div id="settings-saved"></div>
     </div>
 
-    <!-- Results list -->
-    <div id="results-header">
-      Systems: <span id="results-count">—</span>
-    </div>
-    <div id="results-panel"></div>
-
   </div>
 
   <!-- Map -->
@@ -851,15 +924,28 @@
       <button class="map-btn" id="btn-zoom-out" title="Zoom out">−</button>
       <button class="map-btn" id="btn-reset" title="Reset view">⌂</button>
     </div>
-    <div id="popup">
-      <div id="popup-header">
-        <div id="popup-title">—</div>
-        <div id="popup-zone"></div>
-        <button id="popup-close">×</button>
-      </div>
-      <div id="popup-body"></div>
+  </div>
+
+  <!-- Draggable system info pane -->
+  <div id="popup">
+    <div id="popup-header">
+      <div id="popup-title" style="font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--accent);flex:1">Select a system</div>
+      <div id="popup-zone"></div>
+      <button id="popup-close" style="background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;padding:0 2px;line-height:1">×</button>
+    </div>
+    <div id="popup-body" style="overflow-y:auto;padding:10px 12px;flex:1;font-family:var(--font-mono);font-size:11px;line-height:1.6;color:var(--text-dim)">
+      Click any system on the map to view its details here.
     </div>
   </div>
+
+  <!-- Results sidebar -->
+  <div id="results-sidebar">
+    <div id="results-header">
+      Systems: <span id="results-count">—</span>
+    </div>
+    <div id="results-panel"></div>
+  </div>
+
 </div>
 
 <script>
@@ -908,6 +994,9 @@ function applyConfigToDOM() {
   document.getElementById('s-tag').value       = CONFIG.HOME_ALLIANCE;
   document.getElementById('s-color-hex').value = CONFIG.HOME_COLOR;
   document.getElementById('s-color-pick').value= CONFIG.HOME_COLOR;
+  // Update search placeholder
+  const searchEl = document.getElementById('f-search');
+  if (searchEl) searchEl.placeholder = `System, player, [${CONFIG.HOME_ALLIANCE}], sector…`;
 }
 applyConfigToDOM();
 
@@ -1186,8 +1275,20 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   document.getElementById('f-richness').value  = '';
   document.getElementById('f-alliance').value  = '';
   document.getElementById('f-player').value    = '';
-  document.getElementById('f-colonized').checked    = true;  // default stays on
+  document.getElementById('f-colonized').checked    = false;
   document.getElementById('f-unaffiliated').checked = false;
+  // Clear search
+  document.getElementById('f-search').value = '';
+  document.getElementById('f-search-clear').style.display = 'none';
+  searchState = { query: '', type: null, results: [], idx: 0 };
+  closeSearchDropdown();
+  // Clear selection
+  selectedSystem = null;
+  document.getElementById('popup-title').textContent = 'Select a system';
+  document.getElementById('popup-zone').textContent  = '';
+  document.getElementById('popup-zone').className    = '';
+  document.getElementById('popup-body').innerHTML    = 'Click any system on the map to view its details here.';
+  document.querySelectorAll('.result-item').forEach(el => el.classList.remove('active'));
   applyFilters();
 });
 
@@ -1276,16 +1377,17 @@ function buildResultsList() {
   sorted.forEach(s => {
     const div = document.createElement('div');
     div.className = 'result-item' + (selectedSystem && selectedSystem.id === s.id ? ' active' : '');
-    const zone = (s.securityZone || 'unknown').toLowerCase();
+    const zone     = (s.securityZone || 'unknown').toLowerCase();
     const colonies = s.planets.filter(p => p.userId).length;
+    const dotColor = zone === 'open' ? 'var(--open)'
+                   : zone === 'sentinel' ? 'var(--sentinel)'
+                   : zone === 'dead' ? 'var(--dead)'
+                   : zone === 'rift' ? 'var(--rift)'
+                   : 'var(--text-dim)';
     div.innerHTML = `
-      <div class="result-name">${s.name || 'System ' + s.id}</div>
-      <div class="result-meta">
-        <span class="zone-${zone}">${zone}</span>
-        <span>${s.starType || '?'}</span>
-        <span>${s.planetCount}p</span>
-        ${colonies ? `<span style="color:var(--accent)">${colonies} col</span>` : ''}
-      </div>`;
+      <span style="width:6px;height:6px;border-radius:50%;background:${dotColor};flex-shrink:0;display:inline-block"></span>
+      <span class="result-name">${s.name || 'System ' + s.id}</span>
+      ${colonies ? `<span class="result-colony">${colonies}c</span>` : ''}`;
     div.addEventListener('click', () => selectSystem(s, true));
     panel.appendChild(div);
   });
@@ -1420,7 +1522,8 @@ function drawMap() {
   }
 
   // ── System dots ────────────────────────────────────────────────────────────
-  const baseR = Math.max(1.5, Math.min(4, viewScale * 3.5));
+  // Dynamic dot size — smaller at full zoom out, larger when zoomed in
+  const baseR = Math.max(1.0, Math.min(5, viewScale * 2.2));
   const homeTag = CONFIG.HOME_ALLIANCE.toUpperCase();
   const homeRgb = hexToRgb(CONFIG.HOME_COLOR);
 
@@ -1760,28 +1863,17 @@ function showPopup(s) {
   }
 
   body.innerHTML = html;
-
-  // Position popup near the selected system dot, keeping it on-screen
-  const pt = dataToCanvas(s.x, s.y);
-  const rect = mapArea.getBoundingClientRect();
-  const pw = 340, ph = Math.min(500, rect.height - 28);
-  let left = pt.x + 16, top = pt.y - 20;
-  if (left + pw > rect.width  - 10) left = pt.x - pw - 16;
-  if (top  + ph > rect.height - 10) top  = rect.height - ph - 10;
-  if (top < 10) top = 10;
-  if (left < 10) left = 10;
-
-  popup.style.left   = left + 'px';
-  popup.style.top    = top  + 'px';
-  popup.style.maxHeight = ph + 'px';
-  popup.classList.add('visible');
+  // Popup is draggable/persistent — no repositioning needed
 }
 
 document.getElementById('popup-close').addEventListener('click', () => {
-  popup.classList.remove('visible');
   selectedSystem = null;
-  drawMap();
+  document.getElementById('popup-title').textContent = 'Select a system';
+  document.getElementById('popup-zone').textContent  = '';
+  document.getElementById('popup-zone').className    = '';
+  document.getElementById('popup-body').innerHTML    = 'Click any system on the map to view its details here.';
   document.querySelectorAll('.result-item').forEach(el => el.classList.remove('active'));
+  drawMap();
 });
 
 // ── Canvas interaction ────────────────────────────────────────────────────────
@@ -1880,7 +1972,7 @@ function handleMapClick(e) {
   const cx = e.clientX - rect.left;
   const cy = e.clientY - rect.top;
   const d  = canvasToData(cx, cy);
-  const baseR = Math.max(1.5, Math.min(4, viewScale * 3.5));
+  const baseR = Math.max(1.0, Math.min(5, viewScale * 2.2));
   const hitRadius = (baseR + 6) / viewScale;
 
   let best = null, bestDist = Infinity;
@@ -1922,17 +2014,176 @@ document.getElementById('btn-zoom-out').addEventListener('click', () => {
 
 document.getElementById('btn-reset').addEventListener('click', resetView);
 
+// ── Draggable popup ───────────────────────────────────────────────────────────
+(function initDraggable() {
+  const el  = popup;
+  const hdr = document.getElementById('popup-header');
+  // Default position: bottom-left, just right of sidebar
+  el.style.left   = '270px';
+  el.style.bottom = '20px';
+  el.style.top    = 'auto';
+
+  let dragging = false, ox = 0, oy = 0;
+  hdr.addEventListener('mousedown', e => {
+    dragging = true;
+    const rect = el.getBoundingClientRect();
+    ox = e.clientX - rect.left;
+    oy = e.clientY - rect.top;
+    el.style.bottom = 'auto';
+    el.style.top    = rect.top + 'px';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    let left = Math.max(0, Math.min(window.innerWidth  - el.offsetWidth,  e.clientX - ox));
+    let top  = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, e.clientY - oy));
+    el.style.left = left + 'px';
+    el.style.top  = top  + 'px';
+  });
+  document.addEventListener('mouseup', () => { dragging = false; });
+})();
+
+// ── Master search ─────────────────────────────────────────────────────────────
+let searchState = { query: '', type: null, results: [], idx: 0 };
+const searchInput    = document.getElementById('f-search');
+const searchClear    = document.getElementById('f-search-clear');
+const searchDropdown = document.getElementById('search-dropdown');
+
+function closeSearchDropdown() { searchDropdown.style.display = 'none'; }
+
+function buildSearchDropdown(q) {
+  if (!q || !allSystems.length) { closeSearchDropdown(); return; }
+  const ql = q.toLowerCase();
+  const items = [];
+
+  // 1. Exact system name
+  const sysExact = allSystems.find(s => (s.name || '').toLowerCase() === ql);
+  if (sysExact) items.push({ type: 'system', label: sysExact.name, sub: sysExact.securityZone || '', data: sysExact });
+
+  // 2. Sector match e.g. E47
+  const secMatch = q.match(/^([A-Za-z])(\d+)$/);
+  if (secMatch) {
+    const arm = secMatch[1].toUpperCase(), sec = parseInt(secMatch[2]);
+    const cnt = allSystems.filter(s => { const p = parseSystemName(s.name); return p && p.arm === arm && p.sector === sec; }).length;
+    if (cnt) items.push({ type: 'sector', label: `${arm}${sec} — ${cnt} systems`, sub: 'snap to sector', data: { arm, sec } });
+  }
+
+  // 3. Alliance tags
+  const tags = {};
+  allSystems.forEach(s => s.planets.forEach(p => {
+    const t = (p.ownerAllianceTag || '').toUpperCase();
+    if (t && t.includes(ql.toUpperCase())) tags[t] = (tags[t] || 0) + 1;
+  }));
+  Object.entries(tags).sort((a,b) => b[1]-a[1]).slice(0,3).forEach(([t,c]) =>
+    items.push({ type: 'alliance', label: `[${t}]`, sub: `${c} systems`, data: t }));
+
+  // 4. Player names
+  const players = {};
+  allSystems.forEach(s => s.planets.forEach(p => {
+    if (!p.ownerName || !p.ownerName.toLowerCase().includes(ql)) return;
+    if (!players[p.ownerName]) players[p.ownerName] = [];
+    if (!players[p.ownerName].includes(s.id)) players[p.ownerName].push(s.id);
+  }));
+  Object.entries(players).sort((a,b) => b[1].length-a[1].length).slice(0,5).forEach(([name, ids]) =>
+    items.push({ type: 'player', label: name, sub: `${ids.length} colon${ids.length!==1?'ies':'y'}`, data: name }));
+
+  // 5. Partial system name matches
+  if (!sysExact) {
+    allSystems.filter(s => (s.name||'').toLowerCase().includes(ql)).slice(0,5).forEach(s =>
+      items.push({ type: 'system', label: s.name, sub: s.securityZone || '', data: s }));
+  }
+
+  if (!items.length) { closeSearchDropdown(); return; }
+  searchState.results = items;
+
+  const typeColor = { alliance: 'var(--accent)', sector: 'var(--open)', player: 'var(--sentinel)', system: 'var(--text-dim)' };
+  searchDropdown.innerHTML = items.map((item, i) =>
+    `<div class="search-item" data-idx="${i}">
+      <span style="font-size:9px;color:${typeColor[item.type]||'var(--text-dim)'};text-transform:uppercase;letter-spacing:0.08em;min-width:44px">${item.type}</span>
+      <span style="font-family:var(--font-mono);font-size:11px;color:var(--text);flex:1">${item.label}</span>
+      <span style="font-size:10px;color:var(--text-dim)">${item.sub}</span>
+    </div>`).join('');
+
+  searchDropdown.querySelectorAll('.search-item').forEach((el, i) => {
+    el.addEventListener('mousedown', e => { e.preventDefault(); executeSearchItem(items[i]); });
+  });
+  searchDropdown.style.display = 'block';
+}
+
+function executeSearchItem(item) {
+  closeSearchDropdown();
+  if (item.type === 'system') {
+    selectSystem(item.data, true);
+    searchState = { query: searchInput.value, type: 'system', results: [], idx: 0 };
+  } else if (item.type === 'sector') {
+    document.getElementById('f-arm').value    = item.data.arm;
+    document.getElementById('f-sector').value = item.data.sec;
+    applyFilters();
+    const ss = allSystems.filter(s => { const p = parseSystemName(s.name); return p && p.arm === item.data.arm && p.sector === item.data.sec; });
+    if (ss.length) {
+      const cx = ss.reduce((a,x) => a+x.x, 0)/ss.length;
+      const cy = ss.reduce((a,x) => a+x.y, 0)/ss.length;
+      const rect = mapArea.getBoundingClientRect();
+      viewX = rect.width/2  - cx * viewScale;
+      viewY = rect.height/2 - cy * viewScale;
+      drawMap();
+    }
+  } else if (item.type === 'alliance') {
+    document.getElementById('f-alliance').value = item.data;
+    applyFilters();
+    searchState = { query: searchInput.value, type: 'alliance', results: [], idx: 0 };
+  } else if (item.type === 'player') {
+    const colonies = allSystems.filter(s => s.planets.some(p => (p.ownerName||'').toLowerCase() === item.data.toLowerCase()));
+    if (!colonies.length) return;
+    searchState = { query: searchInput.value, type: 'player', results: colonies, idx: 0 };
+    selectSystem(colonies[0], true);
+  }
+}
+
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim();
+  searchClear.style.display = q ? 'inline' : 'none';
+  if (!q) { closeSearchDropdown(); return; }
+  buildSearchDropdown(q);
+});
+
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeSearchDropdown(); return; }
+  if (e.key === 'Enter') {
+    if (searchState.type === 'player' && searchState.results.length > 1) {
+      searchState.idx = (searchState.idx + 1) % searchState.results.length;
+      selectSystem(searchState.results[searchState.idx], true);
+      return;
+    }
+    if (searchState.results.length > 0) executeSearchItem(searchState.results[0]);
+    closeSearchDropdown();
+  }
+});
+
+searchInput.addEventListener('blur', () => setTimeout(closeSearchDropdown, 150));
+
+searchClear.addEventListener('click', () => {
+  searchInput.value = '';
+  searchClear.style.display = 'none';
+  searchState = { query: '', type: null, results: [], idx: 0 };
+  closeSearchDropdown();
+  document.getElementById('f-alliance').value = '';
+  applyFilters();
+});
+
 // ── Resize ────────────────────────────────────────────────────────────────────
 const ro = new ResizeObserver(resizeCanvas);
 ro.observe(mapArea);
-resizeCanvas();// ── Auto-fetch map data on load ──────────────────────────────────────────────
-(function fetchDefaultData() {
-  const loadZoneEl = document.getElementById('load-zone');
-  const statusEl   = loadZoneEl.querySelector('p');
-  const loadingEl  = document.getElementById('loading-state');
-  const emptyEl    = document.getElementById('empty-state');
+resizeCanvas();
 
-  // Show spinner, hide static empty state
+// ── Auto-fetch map data on load ───────────────────────────────────────────────
+(function fetchDefaultData() {
+  const loadZoneEl  = document.getElementById('load-zone');
+  const statusEl    = loadZoneEl.querySelector('p');
+  const loadingEl   = document.getElementById('loading-state');
+  const emptyEl     = document.getElementById('empty-state');
+
+  // Show spinner, hide the static empty state
   emptyEl.style.display = 'none';
   loadingEl.classList.add('visible');
   statusEl.innerHTML = '<strong>Loading map data…</strong><br>Fetching nexus-map-clean.json';
