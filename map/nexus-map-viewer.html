@@ -423,6 +423,63 @@
   }
   #btn-show-fleet-summary:hover { border-color: var(--accent); }
 
+  /* ── Fleet detail modal (per-system, stacked above the system popup) ────── */
+  #fleet-detail {
+    position: fixed;
+    left: 270px;
+    bottom: 510px;          /* ~8px above the system popup's top edge */
+    width: 320px;
+    max-height: 300px;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    display: none;          /* shown by JS when a system with fleet data is selected */
+    flex-direction: column;
+    z-index: 101;           /* one above the system popup */
+    pointer-events: all;
+    user-select: none;
+  }
+  #fleet-detail.is-open { display: flex; }
+  #fleet-detail-header {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    cursor: grab;
+  }
+  #fleet-detail-header:active { cursor: grabbing; }
+  #fleet-detail .modal-title {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #fleet-detail .modal-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+  }
+  #fleet-detail .modal-btn:hover { color: var(--text); }
+  #fleet-detail-body {
+    overflow-y: auto;
+    padding: 10px 12px;
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text);
+  }
+
   /* ── Master search ───────────────────────────────────────────────────────── */
   #search-wrap {
     position: relative;
@@ -1081,6 +1138,15 @@
     <div id="fleet-summary-body"></div>
   </div>
 
+  <!-- Draggable per-system fleet detail modal (stacked above the system popup) -->
+  <div id="fleet-detail">
+    <div id="fleet-detail-header">
+      <div class="modal-title">🚀 Fleet at <span id="fleet-detail-system">—</span></div>
+      <button id="fleet-detail-close" class="modal-btn" title="Close">×</button>
+    </div>
+    <div id="fleet-detail-body"></div>
+  </div>
+
   <!-- Results sidebar -->
   <div id="results-sidebar">
     <div id="results-header">
@@ -1597,10 +1663,18 @@ filterIds.forEach(id => {
 });
 
 // Fleet readiness is an overlay toggle, not a system filter — redraw the map
-// and refresh the popup when it changes; don't touch filteredSystems.
+// and refresh the popup + per-system fleet detail when it changes; don't
+// touch filteredSystems.
 document.getElementById('f-fleet').addEventListener('change', () => {
   drawMap();
-  if (selectedSystem) showPopup(selectedSystem);
+  if (selectedSystem) {
+    showPopup(selectedSystem);
+    // Toggling on after closing the detail should bring it back.
+    fleetDetailDismissed = false;
+    updateFleetDetail(selectedSystem);
+  } else {
+    document.getElementById('fleet-detail').classList.remove('is-open');
+  }
 });
 
 document.getElementById('btn-clear').addEventListener('click', () => {
@@ -2203,7 +2277,75 @@ function selectSystem(s, panTo) {
   }, 0);
 
   showPopup(s);
+  // Each system selection re-evaluates fleet detail (resets any prior dismissal).
+  fleetDetailDismissed = false;
+  updateFleetDetail(s);
   drawMap();
+}
+
+// ── Fleet detail modal (per-system) ───────────────────────────────────────────
+// Lives as a separate, draggable, closeable panel stacked above the system
+// popup. Shows the aggregate fleet presence at the selected system plus a
+// per-ship-type breakdown. Driven by selectSystem(); also re-evaluated when
+// the "Fleet readiness" sidebar toggle changes.
+let fleetDetailDismissed = false;
+
+function updateFleetDetail(s) {
+  const el = document.getElementById('fleet-detail');
+  if (!s) { el.classList.remove('is-open'); return; }
+  const fleetToggle = document.getElementById('f-fleet');
+  const toggleOn    = !fleetToggle || fleetToggle.checked;
+  const fleet       = fleetBySystem.get(s.id);
+  if (!fleet || !toggleOn || fleetDetailDismissed) {
+    el.classList.remove('is-open');
+    return;
+  }
+  renderFleetDetail(s, fleet);
+  el.classList.add('is-open');
+}
+
+function renderFleetDetail(s, fleet) {
+  document.getElementById('fleet-detail-system').textContent = s.name || ('System ' + s.id);
+
+  const pct = fleet.total > 0 ? Math.round(fleet.effective / fleet.total * 100) : null;
+  const pctColor = pct === null ? 'var(--text-dim)'
+                 : pct >= 80    ? 'var(--sentinel)'
+                 : pct >= 50    ? 'var(--open)'
+                                : 'var(--dead)';
+
+  // Aggregate ship-type counts across every player present at this system,
+  // preserving the natural insertion order from the fleet JSON.
+  const typeAgg = {}; // key -> { q, d }
+  fleet.players.forEach(({ location }) => {
+    Object.entries(location.ships || {}).forEach(([k, v]) => {
+      const q = (v && v.quantity) || 0;
+      const d = (v && v.damaged)  || 0;
+      if (!(q + d)) return;
+      if (!typeAgg[k]) typeAgg[k] = { q: 0, d: 0 };
+      typeAgg[k].q += q;
+      typeAgg[k].d += d;
+    });
+  });
+
+  let html = `<div style="font-family:var(--font-mono);font-size:13px;font-weight:bold;color:var(--text);margin-bottom:6px">
+    ${fleet.ships} Ship(s)${pct !== null ? ` — <span style="color:${pctColor}">${pct}% Ready</span>` : ''}
+  </div>`;
+  Object.entries(typeAgg).forEach(([k, v]) => {
+    const total = v.q + v.d;
+    const rhs = v.d > 0 ? `${v.q}/${total}` : `${v.q}`;
+    const rhsColor = v.d > 0 ? 'var(--open)' : 'var(--text)';
+    html += `<div style="font-family:var(--font-mono);font-size:12px;color:var(--text);line-height:1.5">${shipLabel(k)} — <span style="color:${rhsColor}">${rhs}</span></div>`;
+  });
+  if (fleet.players.length > 1) {
+    const names = fleet.players.map(p => p.username).join(', ');
+    html += `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:6px">From: ${names}</div>`;
+  }
+  document.getElementById('fleet-detail-body').innerHTML = html;
+}
+
+function closeFleetDetail() {
+  document.getElementById('fleet-detail').classList.remove('is-open');
+  fleetDetailDismissed = true;
 }
 
 function showPopup(s) {
@@ -2327,49 +2469,10 @@ function showPopup(s) {
     html += `</div>`;
   }
 
-  // Fleet presence in this system (from fleet_all.json, if loaded). Gated by
-  // the "Fleet readiness" sidebar toggle.
-  const fleetToggleEl = document.getElementById('f-fleet');
-  const fleet = fleetBySystem.get(s.id);
-  if (fleet && (!fleetToggleEl || fleetToggleEl.checked)) {
-    const pct = fleet.total > 0 ? Math.round(fleet.effective / fleet.total * 100) : null;
-    const pctColor = pct === null ? 'var(--text-dim)'
-                   : pct >= 80    ? 'var(--sentinel)'
-                   : pct >= 50    ? 'var(--open)'
-                                  : 'var(--dead)';
-    // Aggregate ship-type counts across every player present at this system,
-    // preserving the natural insertion order from the fleet JSON.
-    const typeAgg = {}; // key -> { q, d }
-    fleet.players.forEach(({ location }) => {
-      Object.entries(location.ships || {}).forEach(([k, v]) => {
-        const q = (v && v.quantity) || 0;
-        const d = (v && v.damaged)  || 0;
-        if (!(q + d)) return;
-        if (!typeAgg[k]) typeAgg[k] = { q: 0, d: 0 };
-        typeAgg[k].q += q;
-        typeAgg[k].d += d;
-      });
-    });
-    html += `<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px">
-      <div style="font-size:11px;color:var(--accent);margin-bottom:4px">🚀 Fleet presence</div>
-      <div style="font-family:var(--font-mono);font-size:13px;font-weight:bold;color:var(--text);margin-bottom:5px">
-        ${fleet.ships} Ship(s)${pct !== null ? ` — <span style="color:${pctColor}">${pct}% Ready</span>` : ''}
-      </div>`;
-    Object.entries(typeAgg).forEach(([k, v]) => {
-      const total = v.q + v.d;
-      const rhs = v.d > 0 ? `${v.q}/${total}` : `${v.q}`;
-      const rhsColor = v.d > 0 ? 'var(--open)' : 'var(--text)';
-      html += `<div style="font-family:var(--font-mono);font-size:12px;color:var(--text);line-height:1.5">${shipLabel(k)} — <span style="color:${rhsColor}">${rhs}</span></div>`;
-    });
-    if (fleet.players.length > 1) {
-      const names = fleet.players.map(p => p.username).join(', ');
-      html += `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:6px">From: ${names}</div>`;
-    }
-    html += `</div>`;
-  }
-
   body.innerHTML = html;
-  // Popup is draggable/persistent — no repositioning needed
+  // Popup is draggable/persistent — no repositioning needed.
+  // Fleet presence for this system now lives in its own modal — see
+  // updateFleetDetail(), shown stacked above this popup.
 }
 
 document.getElementById('popup-close').addEventListener('click', () => {
@@ -2378,9 +2481,38 @@ document.getElementById('popup-close').addEventListener('click', () => {
   document.getElementById('popup-zone').textContent  = '';
   document.getElementById('popup-zone').className    = '';
   document.getElementById('popup-body').innerHTML    = 'Click any system on the map to view its details here.';
+  document.getElementById('fleet-detail').classList.remove('is-open');
   buildResultsList();
   drawMap();
 });
+
+// Fleet detail modal: close button + drag handle.
+document.getElementById('fleet-detail-close').addEventListener('click', closeFleetDetail);
+(function initFleetDetailDraggable() {
+  const el  = document.getElementById('fleet-detail');
+  const hdr = document.getElementById('fleet-detail-header');
+  let dragging = false, ox = 0, oy = 0;
+  hdr.addEventListener('mousedown', e => {
+    if (e.target.tagName === 'BUTTON') return;
+    dragging = true;
+    const rect = el.getBoundingClientRect();
+    ox = e.clientX - rect.left;
+    oy = e.clientY - rect.top;
+    // Convert to top-anchored positioning once dragging starts so the
+    // bottom-based CSS default doesn't fight us.
+    el.style.bottom = 'auto';
+    el.style.top    = rect.top + 'px';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const left = Math.max(0, Math.min(window.innerWidth  - el.offsetWidth,  e.clientX - ox));
+    const top  = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, e.clientY - oy));
+    el.style.left = left + 'px';
+    el.style.top  = top  + 'px';
+  });
+  document.addEventListener('mouseup', () => { dragging = false; });
+})();
 
 // ── Canvas interaction ────────────────────────────────────────────────────────
 canvas.addEventListener('mousedown', e => {
