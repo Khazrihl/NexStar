@@ -12,7 +12,8 @@ on:
   workflow_dispatch:    # allow manual runs from the Actions tab
 
 permissions:
-  contents: write       # only used to push the mirrored file back to this repo
+  contents: write       # push the mirrored file back to this repo
+  pages: write          # explicitly request a Pages rebuild after committing
 
 concurrency:
   group: sync-fleet-data
@@ -55,6 +56,7 @@ jobs:
           mv map/fleet_all.json.new map/fleet_all.json
 
       - name: Commit if changed
+        id: commit
         run: |
           set -euo pipefail
           git config user.name  "nexstar-fleet-sync[bot]"
@@ -64,9 +66,24 @@ jobs:
           git add map/fleet_all.json
           if git diff --cached --quiet -- map/fleet_all.json; then
             echo "No fleet changes since last sync; nothing to commit."
+            echo "committed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           generated=$(jq -r '.generatedAt // "unknown"' map/fleet_all.json)
           players=$(jq -r '.players | length' map/fleet_all.json)
           git commit -m "Sync fleet data (${generated}, ${players} player(s))"
           git push
+          echo "committed=true" >> "$GITHUB_OUTPUT"
+
+      # Pages legacy builder doesn't always rebuild on commits pushed by
+      # GITHUB_TOKEN, which would leave the viewer serving stale fleet data
+      # until the next user push. Explicitly request a build so the new
+      # commit goes live within ~1 minute. Failure is non-fatal — the file
+      # is already on main and will publish on the next normal trigger.
+      - name: Request Pages rebuild
+        if: steps.commit.outputs.committed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST "repos/${{ github.repository }}/pages/builds" \
+            || echo "::warning::Pages rebuild request failed (non-fatal)"

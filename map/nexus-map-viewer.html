@@ -1384,13 +1384,22 @@ function loadFile(file) {
 }
 
 // Best-effort load of the fleet overlay shipped via the sync-fleet-data
-// workflow. Silent on 404 — the file is optional.
-(function autoLoadFleet() {
-  fetch('./fleet_all.json', { cache: 'no-store' })
-    .then(r => r.ok ? r.json() : null)
-    .then(data => { if (data && Array.isArray(data.players)) ingestFleet(data); })
-    .catch(() => {});
-})();
+// workflow. Silent on 404 — the file is optional. Resolves true when fresh
+// data was ingested so callers (the "Show Fleet Summary" button) can show
+// a brief refresh state.
+async function reloadFleet() {
+  try {
+    const r = await fetch('./fleet_all.json', { cache: 'no-store' });
+    if (!r.ok) return false;
+    const data = await r.json();
+    if (data && Array.isArray(data.players)) {
+      ingestFleet(data);
+      return true;
+    }
+  } catch (e) { /* silent — fleet data is optional */ }
+  return false;
+}
+reloadFleet();
 
 function ingestData(data) {
   let systems = [];
@@ -2524,9 +2533,16 @@ document.getElementById('fleet-summary-close').addEventListener('click', e => {
   e.stopPropagation();
   closeFleetSummary();
 });
-document.getElementById('btn-show-fleet-summary').addEventListener('click', () => {
+document.getElementById('btn-show-fleet-summary').addEventListener('click', async () => {
   fleetSummaryUserClosed = false;
   openFleetSummary();
+  // Reopen = the user wants the latest. Pull fleet_all.json fresh and let
+  // ingestFleet re-render. Brief "Refreshing…" indicator covers the round-trip.
+  const counter = document.getElementById('fleet-summary-count');
+  const prev    = counter.textContent;
+  counter.textContent = 'Refreshing…';
+  const ok = await reloadFleet();
+  if (!ok) counter.textContent = prev;
 });
 (function initFleetSummaryDraggable() {
   const el  = document.getElementById('fleet-summary');
