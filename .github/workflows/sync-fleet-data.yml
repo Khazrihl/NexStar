@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Fetch fleet_all.json from private data repo
         env:
@@ -59,12 +59,14 @@ jobs:
           set -euo pipefail
           git config user.name  "nexstar-fleet-sync[bot]"
           git config user.email "actions@users.noreply.github.com"
-          if git diff --quiet -- map/fleet_all.json; then
+          # Stage first so a brand-new (untracked) file shows up as a diff
+          # against HEAD; `git diff --quiet` ignores untracked paths.
+          git add map/fleet_all.json
+          if git diff --cached --quiet -- map/fleet_all.json; then
             echo "No fleet changes since last sync; nothing to commit."
             exit 0
           fi
           generated=$(jq -r '.generatedAt // "unknown"' map/fleet_all.json)
           players=$(jq -r '.players | length' map/fleet_all.json)
-          git add map/fleet_all.json
           git commit -m "Sync fleet data (${generated}, ${players} player(s))"
           git push
