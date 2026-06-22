@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-22T14:16:17+00:00",
+  "players": [
+    {
+      "schemaVersion": 2,
+      "generatedAt": "2026-06-22T14:16:17+00:00",
+      "player": {
+        "userId": 32,
+        "username": "Vonrich"
+      },
+      "totals": {
+        "ships": 156,
+        "locations": 3,
+        "byType": {
+          "scout": 14,
+          "fighter": 45,
+          "interceptor": 36,
+          "cruiser": 59,
+          "carrier": 2
+        },
+        "strength": {
+          "effectiveAttack": 6445,
+          "totalAttack": 6715,
+          "strengthPct": 96.0
+        }
+      },
+      "locations": [
+        {
+          "planetId": 1035,
+          "name": "Walla Walla",
+          "systemId": 9816,
+          "systemName": "E9-16",
+          "x": 534.5285,
+          "y": -487.53058,
+          "shipCount": 4,
+          "ships": {
+            "scout": {
+              "quantity": 4,
+              "damaged": 0,
+              "attack": 15,
+              "shipClass": "combat"
+            }
+          },
+          "strength": {
+            "effectiveAttack": 60,
+            "totalAttack": 60,
+            "strengthPct": 100.0
+          }
+        },
+        {
+          "planetId": 40106,
+          "name": "The Unforgiven",
+          "systemId": 5865,
+          "systemName": "G24-15",
+          "x": 261.18875,
+          "y": -319.32544,
+          "shipCount": 36,
+          "ships": {
+            "scout": {
+              "quantity": 10,
+              "damaged": 0,
+              "attack": 15,
+              "shipClass": "combat"
+            },
+            "fighter": {
+              "quantity": 4,
+              "damaged": 0,
+              "attack": 30,
+              "shipClass": "combat"
+            },
+            "interceptor": {
+              "quantity": 15,
+              "damaged": 0,
+              "attack": 35,
+              "shipClass": "combat"
+            },
+            "cruiser": {
+              "quantity": 7,
+              "damaged": 0,
+              "attack": 65,
+              "shipClass": "combat"
+            }
+          },
+          "strength": {
+            "effectiveAttack": 1250,
+            "totalAttack": 1250,
+            "strengthPct": 100.0
+          }
+        },
+        {
+          "planetId": 43331,
+          "name": "Mr. Toad's Wild Ride",
+          "systemId": 11744,
+          "systemName": "E47-44",
+          "x": -62.440212,
+          "y": -101.3183,
+          "shipCount": 116,
+          "ships": {
+            "fighter": {
+              "quantity": 32,
+              "damaged": 9,
+              "attack": 30,
+              "shipClass": "combat"
+            },
+            "interceptor": {
+              "quantity": 21,
+              "damaged": 0,
+              "attack": 35,
+              "shipClass": "combat"
+            },
+            "cruiser": {
+              "quantity": 52,
+              "damaged": 0,
+              "attack": 65,
+              "shipClass": "combat"
+            },
+            "carrier": {
+              "quantity": 2,
+              "damaged": 0,
+              "attack": 30,
+              "shipClass": "combat"
+            }
+          },
+          "strength": {
+            "effectiveAttack": 5135,
+            "totalAttack": 5405,
+            "strengthPct": 95.0
+          }
+        }
+      ]
+    }
+  ]
+}
