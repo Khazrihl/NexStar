@@ -337,6 +337,92 @@
   }
   #popup-header:active { cursor: grabbing; }
 
+  /* ── Fleet summary modal ────────────────────────────────────────────────── */
+  #fleet-summary {
+    position: fixed;
+    top: 80px;
+    left: 270px;
+    width: 340px;
+    max-height: 60vh;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    display: none;            /* shown by JS when fleet data arrives */
+    flex-direction: column;
+    z-index: 100;
+    pointer-events: all;
+    user-select: none;
+  }
+  #fleet-summary.is-open { display: flex; }
+  #fleet-summary.minimized { max-height: none; }
+  #fleet-summary.minimized #fleet-summary-body { display: none; }
+  #fleet-summary.minimized #fleet-summary-header { border-bottom: none; }
+  #fleet-summary-header {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    cursor: grab;
+  }
+  #fleet-summary-header:active { cursor: grabbing; }
+  #fleet-summary .modal-title {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  #fleet-summary .modal-count {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    flex: 1;
+  }
+  #fleet-summary .modal-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+  }
+  #fleet-summary .modal-btn:hover { color: var(--text); }
+  #fleet-summary-body {
+    overflow-y: auto;
+    padding: 10px 12px;
+    flex: 1;
+    font-family: var(--font-mono);
+  }
+  .fleet-summary-row {
+    cursor: pointer;
+    padding: 3px 4px;
+    border-radius: 3px;
+    transition: background-color 0.1s;
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    font-size: 11px;
+    color: var(--text);
+  }
+  .fleet-summary-row:hover { background: rgba(245,158,11,0.10); }
+  #btn-show-fleet-summary {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 4px;
+    margin-top: 6px;
+    width: 100%;
+    text-align: left;
+  }
+  #btn-show-fleet-summary:hover { border-color: var(--accent); }
+
   /* ── Master search ───────────────────────────────────────────────────────── */
   #search-wrap {
     position: relative;
@@ -883,9 +969,14 @@
           <input type="checkbox" id="f-unaffiliated">
           Unaffiliated players only
         </label>
+        <label class="check-label">
+          <input type="checkbox" id="f-fleet" checked>
+          Fleet readiness
+        </label>
       </div>
 
       <button id="btn-clear">Clear All</button>
+      <button id="btn-show-fleet-summary" style="display:none">🚀 Show Fleet Summary</button>
     </div>
 
     <!-- Legend -->
@@ -977,6 +1068,17 @@
     <div id="popup-body" style="overflow-y:auto;padding:10px 12px;flex:1;font-family:var(--font-mono);font-size:11px;line-height:1.6;color:var(--text-dim)">
       Click any system on the map to view its details here.
     </div>
+  </div>
+
+  <!-- Draggable fleet summary modal -->
+  <div id="fleet-summary">
+    <div id="fleet-summary-header">
+      <div class="modal-title">🚀 Fleet Summary</div>
+      <div id="fleet-summary-count" class="modal-count"></div>
+      <button id="fleet-summary-min" class="modal-btn" title="Minimize">—</button>
+      <button id="fleet-summary-close" class="modal-btn" title="Close">×</button>
+    </div>
+    <div id="fleet-summary-body"></div>
   </div>
 
   <!-- Results sidebar -->
@@ -1193,6 +1295,21 @@ const FIELD_EMOJI = {
 const ARM_NAMES = { A:'Alpha', B:'Beta', G:'Gamma', D:'Delta', E:'Epsilon', Z:'Zeta' };
 const SYS_RE = /^([A-Za-z]+)(\d+)-(\d+)$/;
 
+// Display names for ship keys from fleet_all.json. Fallback to a title-cased
+// pluralization of the key for anything we haven't named here.
+const SHIP_LABEL = {
+  scout: 'Scouts', fighter: 'Fighters', interceptor: 'Interceptors',
+  cruiser: 'Cruisers', carrier: 'Carriers', bomber: 'Bombers',
+  frigate: 'Frigates', destroyer: 'Destroyers', corvette: 'Corvettes',
+  battleship: 'Battleships', dreadnought: 'Dreadnoughts',
+  probe: 'Probes', spy_probe: 'Spy Probes'
+};
+function shipLabel(key) {
+  if (SHIP_LABEL[key]) return SHIP_LABEL[key];
+  const t = String(key).split('_').map(w => w ? w[0].toUpperCase() + w.slice(1) : '').join(' ');
+  return t.endsWith('s') ? t : t + 's';
+}
+
 function parseSystemName(name) {
   if (!name) return null;
   const m = name.trim().match(SYS_RE);
@@ -1219,6 +1336,12 @@ let dragging = false, dragStart = null, viewStart = null;
 
 // Data bounds
 let dataMinX, dataMaxX, dataMinY, dataMaxY, dataCx, dataCy, dataSpan;
+
+// Fleet overlay state — populated by ingestFleet() from fleet_all.json
+// (mirrored hourly by .github/workflows/sync-fleet-data.yml).
+let fleetData = null;
+let fleetBySystem = new Map(); // systemId -> { effective, total, ships, players: [{username, location}] }
+let fleetSummaryUserClosed = false;
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('map-canvas');
@@ -1249,13 +1372,25 @@ function loadFile(file) {
   reader.onload = e => {
     try {
       const data = JSON.parse(e.target.result);
-      ingestData(data);
+      // Fleet report (from nexus-fleet-bot) vs galaxy dump — distinguished by
+      // the top-level `players` array.
+      if (data && Array.isArray(data.players)) ingestFleet(data);
+      else ingestData(data);
     } catch(err) {
       alert('Failed to parse JSON: ' + err.message);
     }
   };
   reader.readAsText(file);
 }
+
+// Best-effort load of the fleet overlay shipped via the sync-fleet-data
+// workflow. Silent on 404 — the file is optional.
+(function autoLoadFleet() {
+  fetch('./fleet_all.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : null)
+    .then(data => { if (data && Array.isArray(data.players)) ingestFleet(data); })
+    .catch(() => {});
+})();
 
 function ingestData(data) {
   let systems = [];
@@ -1296,6 +1431,152 @@ function ingestData(data) {
   emptyState.style.display = 'none';
   resetView();
   applyFilters();
+  // Re-render the fleet summary so it can now resolve arm/sector for each
+  // system if fleet data arrived before the galaxy.
+  renderFleetSummary();
+}
+
+// Build the fleet overlay index from a fleet_all.json document. Aggregates
+// multiple players' presence per system so the map shows a single ring per
+// location with the combined readiness percentage.
+function ingestFleet(data) {
+  fleetData = data;
+  fleetBySystem.clear();
+  (data.players || []).forEach(pr => {
+    const username = (pr.player && pr.player.username) || '?';
+    (pr.locations || []).forEach(loc => {
+      if (loc.systemId == null || !loc.shipCount) return;
+      let entry = fleetBySystem.get(loc.systemId);
+      if (!entry) {
+        entry = { effective: 0, total: 0, ships: 0, players: [] };
+        fleetBySystem.set(loc.systemId, entry);
+      }
+      const str = loc.strength || {};
+      entry.effective += str.effectiveAttack || 0;
+      entry.total     += str.totalAttack     || 0;
+      entry.ships     += loc.shipCount       || 0;
+      entry.players.push({ username, location: loc });
+    });
+  });
+  drawMap();
+  if (selectedSystem) showPopup(selectedSystem);
+  // Pop the summary modal up on first arrival; if the user has dismissed it,
+  // refresh content silently so the next reopen shows fresh numbers.
+  if (fleetSummaryUserClosed) renderFleetSummary();
+  else openFleetSummary();
+}
+
+// ── Fleet summary modal ───────────────────────────────────────────────────────
+// Aggregates fleet presence by Arm > Sector > System. Click a row to focus
+// that system on the map. Refreshes whenever fleet data or galaxy data load.
+function renderFleetSummary() {
+  const body    = document.getElementById('fleet-summary-body');
+  const counter = document.getElementById('fleet-summary-count');
+  if (!body) return;
+
+  const sysById = new Map();
+  allSystems.forEach(s => sysById.set(s.id, s));
+
+  // armKey -> { systems: [], ships, eff, tot }
+  const byArm = new Map();
+  let gShips = 0, gEff = 0, gTot = 0, sysCount = 0;
+
+  for (const [sid, entry] of fleetBySystem) {
+    const sys    = sysById.get(sid);
+    const name   = (sys && sys.name) || '?';
+    const parsed = parseSystemName(name);
+    const armKey = parsed ? parsed.arm : '?';
+    const sector = parsed ? parsed.sector : null;
+    if (!byArm.has(armKey)) byArm.set(armKey, { systems: [], ships: 0, eff: 0, tot: 0 });
+    const arm = byArm.get(armKey);
+    const pct = entry.total > 0 ? Math.round(entry.effective / entry.total * 100) : null;
+    const owners = entry.players.map(p => p.username);
+    arm.systems.push({ sid, name, sector, ships: entry.ships, pct, owners });
+    arm.ships += entry.ships;
+    arm.eff   += entry.effective;
+    arm.tot   += entry.total;
+    gShips    += entry.ships;
+    gEff      += entry.effective;
+    gTot      += entry.total;
+    sysCount++;
+  }
+
+  if (sysCount === 0) {
+    counter.textContent = '';
+    body.innerHTML = `<div style="font-size:11px;color:var(--text-dim);padding:6px 2px">No fleet data loaded yet. Once <code>fleet_all.json</code> is fetched (via the sync workflow or drag-and-drop), this report populates.</div>`;
+    return;
+  }
+
+  const gPct = gTot > 0 ? Math.round(gEff / gTot * 100) : null;
+  counter.textContent = `${sysCount} system${sysCount === 1 ? '' : 's'} · ${gShips} ship${gShips === 1 ? '' : 's'}${gPct !== null ? ` · ${gPct}% ready` : ''}`;
+
+  const armOrder = ['A','B','G','D','E','Z'];
+  const sortedArms = [...byArm.keys()].sort((a, b) => {
+    const ia = armOrder.indexOf(a), ib = armOrder.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+
+  const colorFor = p => p === null ? 'var(--text-dim)'
+                      : p >= 80    ? 'var(--sentinel)'
+                      : p >= 50    ? 'var(--open)'
+                                   : 'var(--dead)';
+
+  let html = '';
+  sortedArms.forEach((arm, i) => {
+    const a    = byArm.get(arm);
+    const aPct = a.tot > 0 ? Math.round(a.eff / a.tot * 100) : null;
+    const armName = ARM_NAMES[arm] || 'Unknown';
+    html += `<div style="${i > 0 ? 'margin-top:10px;' : ''}">
+      <div style="font-size:11px;color:var(--accent);margin-bottom:4px">${armName} Arm — ${a.ships} ship(s)${aPct !== null ? ` · <span style="color:${colorFor(aPct)}">${aPct}% ready</span>` : ''}</div>`;
+
+    a.systems.sort((x, y) => {
+      if (x.sector !== y.sector) {
+        if (x.sector == null) return 1;
+        if (y.sector == null) return -1;
+        return x.sector - y.sector;
+      }
+      return x.name.localeCompare(y.name);
+    });
+
+    a.systems.forEach(sys => {
+      const secLabel = sys.sector != null ? `S${String(sys.sector).padStart(2, '0')}` : '—';
+      const ownersText = sys.owners.join(', ');
+      html += `<div class="fleet-summary-row" data-sid="${sys.sid}">
+        <span style="color:var(--text-dim);min-width:34px">${secLabel}</span>
+        <span style="flex:1.2;min-width:0">${sys.name}</span>
+        <span style="flex:1;min-width:0;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${ownersText}">⚑ ${ownersText}</span>
+        <span style="color:var(--text-dim);min-width:36px;text-align:right">${sys.ships}</span>
+        <span style="min-width:42px;text-align:right;color:${colorFor(sys.pct)}">${sys.pct !== null ? sys.pct + '%' : '—'}</span>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+
+  body.innerHTML = html;
+
+  body.querySelectorAll('.fleet-summary-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const sid = parseInt(row.dataset.sid);
+      const s   = allSystems.find(x => x.id === sid);
+      if (s) selectSystem(s, true);
+    });
+  });
+}
+
+function openFleetSummary() {
+  const m = document.getElementById('fleet-summary');
+  m.classList.add('is-open');
+  m.classList.remove('minimized');
+  document.getElementById('btn-show-fleet-summary').style.display = 'none';
+  renderFleetSummary();
+}
+function closeFleetSummary() {
+  document.getElementById('fleet-summary').classList.remove('is-open');
+  document.getElementById('btn-show-fleet-summary').style.display = 'block';
+  fleetSummaryUserClosed = true;
 }
 
 // ── Filters ───────────────────────────────────────────────────────────────────
@@ -1304,6 +1585,13 @@ filterIds.forEach(id => {
   const el = document.getElementById(id);
   const evt = (el.tagName === 'SELECT' || el.type === 'checkbox') ? 'change' : 'input';
   el.addEventListener(evt, applyFilters);
+});
+
+// Fleet readiness is an overlay toggle, not a system filter — redraw the map
+// and refresh the popup when it changes; don't touch filteredSystems.
+document.getElementById('f-fleet').addEventListener('change', () => {
+  drawMap();
+  if (selectedSystem) showPopup(selectedSystem);
 });
 
 document.getElementById('btn-clear').addEventListener('click', () => {
@@ -1818,6 +2106,72 @@ function drawMap() {
       ctx.fillText(s.name, pt.x + baseR + 3, pt.y + 3);
     }
   });
+
+  // ── Fleet overlay: readiness ring + eff/total label ──────────────────────
+  // Drawn after the main pass so it overlays dots/stations cleanly. Hidden at
+  // extreme zoom-out to avoid clutter, or when the "Fleet readiness" toggle
+  // in the sidebar is unchecked.
+  const fleetToggle = document.getElementById('f-fleet');
+  const fleetVisible = !fleetToggle || fleetToggle.checked;
+  if (fleetVisible && fleetBySystem.size && viewScale > 0.9) {
+    const showLabel = viewScale > 1.6;
+    const ringR = Math.max(7, Math.min(20, viewScale * 5));
+    ctx.save();
+    ctx.lineCap = 'butt';
+    allSystems.forEach(s => {
+      const entry = fleetBySystem.get(s.id);
+      if (!entry) return;
+      const pt = dataToCanvas(s.x, s.y);
+      if (pt.x < -40 || pt.x > W+40 || pt.y < -40 || pt.y > H+40) return;
+
+      // Faint full-circle backdrop = potential strength.
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, ringR, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(148,163,184,0.35)';
+      ctx.lineWidth   = 2;
+      ctx.stroke();
+
+      // Foreground arc filled clockwise from 12 o'clock = effective / total.
+      // Color: red (0%) -> amber (50%) -> green (100%).
+      if (entry.total > 0 && entry.effective > 0) {
+        const pct = Math.min(1, entry.effective / entry.total);
+        let r, g, b;
+        if (pct < 0.5) {
+          const t = pct / 0.5;
+          r = Math.round(248 + (251 - 248) * t);
+          g = Math.round(113 + (191 - 113) * t);
+          b = Math.round(113 + (60  - 113) * t);
+        } else {
+          const t = (pct - 0.5) / 0.5;
+          r = Math.round(251 + (74  - 251) * t);
+          g = Math.round(191 + (222 - 191) * t);
+          b = Math.round(60  + (128 - 60 ) * t);
+        }
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, ringR, -Math.PI/2, -Math.PI/2 + pct * Math.PI * 2);
+        ctx.strokeStyle = `rgba(${r},${g},${b},0.95)`;
+        ctx.lineWidth   = 2.6;
+        ctx.stroke();
+      }
+
+      // Numeric "effective/total" centered below the ring (with shadow).
+      if (showLabel) {
+        const fontSize = Math.min(11, Math.max(9, viewScale * 1.9));
+        ctx.font         = `${fontSize}px monospace`;
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'top';
+        const txt = entry.effective + '/' + entry.total;
+        const ty  = pt.y + ringR + 3;
+        ctx.fillStyle = 'rgba(2,6,23,0.85)';
+        ctx.fillText(txt, pt.x + 1, ty + 1);
+        ctx.fillStyle = 'rgba(226,232,240,0.95)';
+        ctx.fillText(txt, pt.x, ty);
+      }
+    });
+    ctx.textAlign    = 'start';
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+  }
 }
 
 // ── System popup ──────────────────────────────────────────────────────────────
@@ -1961,6 +2315,47 @@ function showPopup(s) {
         <div style="color:var(--text-dim)">${bldgStr}</div>
       </div>`;
     });
+    html += `</div>`;
+  }
+
+  // Fleet presence in this system (from fleet_all.json, if loaded). Gated by
+  // the "Fleet readiness" sidebar toggle.
+  const fleetToggleEl = document.getElementById('f-fleet');
+  const fleet = fleetBySystem.get(s.id);
+  if (fleet && (!fleetToggleEl || fleetToggleEl.checked)) {
+    const pct = fleet.total > 0 ? Math.round(fleet.effective / fleet.total * 100) : null;
+    const pctColor = pct === null ? 'var(--text-dim)'
+                   : pct >= 80    ? 'var(--sentinel)'
+                   : pct >= 50    ? 'var(--open)'
+                                  : 'var(--dead)';
+    // Aggregate ship-type counts across every player present at this system,
+    // preserving the natural insertion order from the fleet JSON.
+    const typeAgg = {}; // key -> { q, d }
+    fleet.players.forEach(({ location }) => {
+      Object.entries(location.ships || {}).forEach(([k, v]) => {
+        const q = (v && v.quantity) || 0;
+        const d = (v && v.damaged)  || 0;
+        if (!(q + d)) return;
+        if (!typeAgg[k]) typeAgg[k] = { q: 0, d: 0 };
+        typeAgg[k].q += q;
+        typeAgg[k].d += d;
+      });
+    });
+    html += `<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px">
+      <div style="font-size:11px;color:var(--accent);margin-bottom:4px">🚀 Fleet presence</div>
+      <div style="font-family:var(--font-mono);font-size:13px;font-weight:bold;color:var(--text);margin-bottom:5px">
+        ${fleet.ships} Ship(s)${pct !== null ? ` — <span style="color:${pctColor}">${pct}% Ready</span>` : ''}
+      </div>`;
+    Object.entries(typeAgg).forEach(([k, v]) => {
+      const total = v.q + v.d;
+      const rhs = v.d > 0 ? `${v.q}/${total}` : `${v.q}`;
+      const rhsColor = v.d > 0 ? 'var(--open)' : 'var(--text)';
+      html += `<div style="font-family:var(--font-mono);font-size:12px;color:var(--text);line-height:1.5">${shipLabel(k)} — <span style="color:${rhsColor}">${rhs}</span></div>`;
+    });
+    if (fleet.players.length > 1) {
+      const names = fleet.players.map(p => p.username).join(', ');
+      html += `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);margin-top:6px">From: ${names}</div>`;
+    }
     html += `</div>`;
   }
 
@@ -2120,6 +2515,41 @@ document.getElementById('btn-zoom-out').addEventListener('click', () => {
 document.getElementById('btn-reset').addEventListener('click', resetView);
 
 // ── Draggable popup ───────────────────────────────────────────────────────────
+// Fleet summary modal: close / minimize / reopen wiring + draggable.
+document.getElementById('fleet-summary-min').addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('fleet-summary').classList.toggle('minimized');
+});
+document.getElementById('fleet-summary-close').addEventListener('click', e => {
+  e.stopPropagation();
+  closeFleetSummary();
+});
+document.getElementById('btn-show-fleet-summary').addEventListener('click', () => {
+  fleetSummaryUserClosed = false;
+  openFleetSummary();
+});
+(function initFleetSummaryDraggable() {
+  const el  = document.getElementById('fleet-summary');
+  const hdr = document.getElementById('fleet-summary-header');
+  let dragging = false, ox = 0, oy = 0;
+  hdr.addEventListener('mousedown', e => {
+    if (e.target.tagName === 'BUTTON') return;  // don't start a drag from a button
+    dragging = true;
+    const rect = el.getBoundingClientRect();
+    ox = e.clientX - rect.left;
+    oy = e.clientY - rect.top;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const left = Math.max(0, Math.min(window.innerWidth  - el.offsetWidth,  e.clientX - ox));
+    const top  = Math.max(0, Math.min(window.innerHeight - el.offsetHeight, e.clientY - oy));
+    el.style.left = left + 'px';
+    el.style.top  = top  + 'px';
+  });
+  document.addEventListener('mouseup', () => { dragging = false; });
+})();
+
 (function initDraggable() {
   const el  = popup;
   const hdr = document.getElementById('popup-header');
