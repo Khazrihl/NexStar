@@ -330,7 +330,11 @@ def pull_galaxy_map(session, progress, baseline=None):
     updated_count = 0
 
     for s in raw_systems:
-        if s.get('visibility') == 'full' and s.get('name'):
+        # Keep every visible system the API returns to this account, not just
+        # fully-scanned ones — sectors with `partial` visibility still
+        # surface the systems we've personally revealed (via probes / sentinel
+        # coverage), and dropping them here means they vanish from the map.
+        if s.get('visibility') and s.get('visibility') != 'none' and s.get('name'):
             sid = s['id']
             if sid in systems_by_id:
                 # Update only live/dynamic fields — never touch planets,
@@ -413,10 +417,14 @@ def pull_sector_systems(session, systems_by_id, progress,
     completed = set(progress['completed_sectors'])
     stations  = progress['stations']
 
-    # Only pull full-visibility sectors with content
+    # Pull any sector the account has any visibility into. Even sectors marked
+    # `partial` will return the systems we've personally revealed via probes /
+    # sentinel coverage from /api/galaxy/sectors/{sid}/systems — those systems
+    # used to be silently dropped when we gated on `visibility == 'full'`.
+    # Sectors with `visibility == 'none'` have nothing for us to fetch.
     target_sectors = [
         s for s in all_sectors
-        if s['visibility'] == 'full' and s['systemCount'] > 0
+        if s.get('visibility') and s['visibility'] != 'none' and s['systemCount'] > 0
     ]
 
     if test_mode:
