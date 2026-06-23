@@ -58,8 +58,10 @@ CONFIG_FILE   = 'nl_config.txt'
 PROGRESS_FILE = 'nl_dumper_progress.json'
 OUTPUT_FILE   = 'nexus-map-clean.json'
 
-# Delay between requests in seconds. Increase if you see 429 errors.
-REQUEST_DELAY = 1.0
+# Delay between requests in seconds. The API rate limit is 360 req/min
+# (6 req/s); 0.3s = 3.3 req/s leaves comfortable headroom. Bump if you see
+# 429 errors.
+REQUEST_DELAY = 0.3
 
 # ── Load config ───────────────────────────────────────────────────────────────
 def load_config():
@@ -452,11 +454,22 @@ def pull_sector_systems(session, systems_by_id, progress,
             if sys_data:
                 sector_systems = sys_data.get('systems') or []
                 colonized_ids  = []
+                # Delta tags: systems whose live summary matches what we already
+                # have in cache (from baseline). Their planet/asteroid data is
+                # very likely unchanged and we can skip the per-system fetch.
+                unchanged_ids  = set()
 
                 for s in sector_systems:
                     if s['id'] in systems_by_id:
-                        # Update live flags only — never wipe static data here
                         sys = systems_by_id[s['id']]
+                        # Compare BEFORE overwriting the live flags so we can
+                        # tell if anything visibly changed at the sector summary.
+                        if sys.get('planets') and (
+                                sys.get('hasColonies')    == s.get('hasColonies', False) and
+                                sys.get('colonizedCount') == s.get('colonizedCount', 0) and
+                                sys.get('isMarketHub')    == s.get('isMarketHub', False)):
+                            unchanged_ids.add(s['id'])
+                        # Update live flags — never wipe static data here.
                         sys['hasColonies']    = s.get('hasColonies', False)
                         sys['colonizedCount'] = s.get('colonizedCount', 0)
                         sys['isMarketHub']    = s.get('isMarketHub', False)
@@ -467,14 +480,22 @@ def pull_sector_systems(session, systems_by_id, progress,
                 print(f'  {len(colonized_ids)} colonized', end='', flush=True)
                 time.sleep(REQUEST_DELAY * 0.5)
 
-                # Planets for colonized systems only (unless all_planets enabled)
+                # Planets for colonized systems only (unless all_planets enabled).
+                # Delta: systems tagged `unchanged_ids` reuse cached planets/
+                # asteroidFields from baseline and skip the API call entirely.
+                # In steady state this is the biggest cost-saver — most systems
+                # don't change between daily runs.
                 if PULL['colonized_planets'] or PULL['all_planets']:
                     pull_targets = (
                         sector_systems if PULL['all_planets']
                         else [s for s in sector_systems if s.get('hasColonies')]
                     )
+                    delta_skipped = 0
                     for sys in pull_targets:
                         sys_id = sys['id']
+                        if sys_id in unchanged_ids:
+                            delta_skipped += 1
+                            continue   # cached planets+asteroidFields carry forward
                         p_data = get(session, f'/api/galaxy/systems/{sys_id}/planets',
                                      silent=True)
                         if p_data and sys_id in systems_by_id:
@@ -504,6 +525,8 @@ def pull_sector_systems(session, systems_by_id, progress,
                                     clean_asteroid(af) for af in asteroids
                                 ]
                         time.sleep(REQUEST_DELAY * 0.3)
+                    if delta_skipped:
+                        print(f' ({delta_skipped} unchanged)', end='', flush=True)
 
             # Stations for this sector — clear stale entries first, then rebuild
             if PULL['stations']:
