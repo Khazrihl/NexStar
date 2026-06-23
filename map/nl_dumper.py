@@ -414,7 +414,7 @@ def pull_sectors(session, progress, test_mode=False):
     return all_sectors
 
 def pull_sector_systems(session, systems_by_id, progress,
-                        all_sectors, test_mode=False):
+                        all_sectors, baseline_summary=None, test_mode=False):
     """Phase 3: Pull system lists per sector, update hasColonies flags."""
     completed = set(progress['completed_sectors'])
     stations  = progress['stations']
@@ -462,12 +462,16 @@ def pull_sector_systems(session, systems_by_id, progress,
                 for s in sector_systems:
                     if s['id'] in systems_by_id:
                         sys = systems_by_id[s['id']]
-                        # Compare BEFORE overwriting the live flags so we can
-                        # tell if anything visibly changed at the sector summary.
-                        if sys.get('planets') and (
-                                sys.get('hasColonies')    == s.get('hasColonies', False) and
-                                sys.get('colonizedCount') == s.get('colonizedCount', 0) and
-                                sys.get('isMarketHub')    == s.get('isMarketHub', False)):
+                        # Compare the live sector summary against the PRE-mutation
+                        # baseline snapshot (captured in main() before Phase 1
+                        # overwrote these fields on the shared dict). If they
+                        # all match, the underlying planet data is very likely
+                        # unchanged and we can skip the per-system fetch.
+                        b = (baseline_summary or {}).get(s['id'])
+                        if (b and b['has_planets']
+                                and b['hasColonies']    == s.get('hasColonies', False)
+                                and b['colonizedCount'] == s.get('colonizedCount', 0)
+                                and b['isMarketHub']    == s.get('isMarketHub', False)):
                             unchanged_ids.add(s['id'])
                         # Update live flags — never wipe static data here.
                         sys['hasColonies']    = s.get('hasColonies', False)
@@ -682,11 +686,29 @@ def main():
     # Load existing output as merge baseline (skipped on --fresh)
     baseline = {} if fresh else load_existing_data(OUTPUT_FILE)
 
+    # Snapshot baseline summary fields BEFORE pull_galaxy_map mutates them.
+    # pull_galaxy_map shallow-copies baseline into systems_by_id and overwrites
+    # hasColonies / colonizedCount / isMarketHub on the shared dict objects —
+    # if Phase 3 compared post-mutation values it'd effectively be comparing
+    # live-to-live and the delta-skip would never (or randomly) fire. This
+    # snapshot is what the actual "did anything change since last dump?" check
+    # in pull_sector_systems compares against.
+    baseline_summary = {
+        sid: {
+            'hasColonies':    s.get('hasColonies', False),
+            'colonizedCount': s.get('colonizedCount', 0),
+            'isMarketHub':    s.get('isMarketHub', False),
+            'has_planets':    bool(s.get('planets')),
+        }
+        for sid, s in baseline.items()
+    }
+
     # ── Pulls ─────────────────────────────────────────────────────────────────
     systems_by_id = pull_galaxy_map(session, progress, baseline=baseline)
     all_sectors   = pull_sectors(session, progress, test_mode=test_mode)
     systems_by_id, stations = pull_sector_systems(
-        session, systems_by_id, progress, all_sectors, test_mode=test_mode
+        session, systems_by_id, progress, all_sectors,
+        baseline_summary=baseline_summary, test_mode=test_mode
     )
 
     # Optional pulls
