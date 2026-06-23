@@ -1,0 +1,76 @@
+name: Daily galaxy dump
+
+# Runs nl_dumper.py once a day against the Nexus Legacy API using a token
+# stored as a repository secret, then commits the resulting
+# `map/nexus-map-clean.json` back to main if it changed. Goal is to keep the
+# galaxy file fresh without anyone running the dumper by hand.
+
+on:
+  schedule:
+    # 06:00 UTC daily — quiet hour for most regions, gives the bot plenty of
+    # headroom before peak gameplay.
+    - cron: '0 6 * * *'
+  workflow_dispatch:    # allow manual runs from the Actions tab
+
+permissions:
+  contents: write       # only used to push the refreshed JSON back to this repo
+
+concurrency:
+  group: daily-galaxy-dump
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    # The dumper takes ~15 minutes for a full pull; 30 leaves slack for slow
+    # API responses or partial-visibility-driven extra calls.
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Write nl_config.txt from secret
+        env:
+          # A live Nexus Legacy session JWT. Get it from the `nexus_token`
+          # cookie in a browser logged into https://s0.nexuslegacy.space, then
+          # add it under Settings > Secrets and variables > Actions as
+          # NEXUS_TOKEN. The dumper sees the galaxy from this account's POV,
+          # so a leader account with broad scout coverage gives the best file.
+          NEXUS_TOKEN: ${{ secrets.NEXUS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NEXUS_TOKEN:-}" ]; then
+            echo "::error::Secret NEXUS_TOKEN is not set. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          # nl_dumper.py expects `token=...` in nl_config.txt next to itself.
+          printf 'token=%s\n' "$NEXUS_TOKEN" > map/nl_config.txt
+
+      - name: Run dumper
+        working-directory: map
+        run: python nl_dumper.py
+
+      - name: Commit if changed
+        run: |
+          set -euo pipefail
+          git config user.name  "nexstar-galaxy-bot[bot]"
+          git config user.email "actions@users.noreply.github.com"
+          # Never commit the token file or intermediate progress checkpoint.
+          rm -f map/nl_config.txt map/nl_dumper_progress.json
+          git add map/nexus-map-clean.json
+          if git diff --cached --quiet -- map/nexus-map-clean.json; then
+            echo "Galaxy unchanged since last sync; nothing to commit."
+            exit 0
+          fi
+          systems=$(jq -r '.meta.systemCount // 0' map/nexus-map-clean.json)
+          captured=$(jq -r '.meta.capturedAt // "unknown"' map/nexus-map-clean.json)
+          git commit -m "Daily galaxy dump (${systems} systems, ${captured})"
+          git push
