@@ -22,9 +22,11 @@ concurrency:
 jobs:
   dump:
     runs-on: ubuntu-latest
-    # The dumper takes ~15 minutes for a full pull; 30 leaves slack for slow
-    # API responses or partial-visibility-driven extra calls.
-    timeout-minutes: 30
+    # Khaz's first scheduled run cancelled at 30 min with 283 target sectors
+    # still to pull (partial-visibility fix expanded scope). 90 min gives 3x
+    # headroom for the current state of the universe and any further growth.
+    # Free Actions on public repos have no minute cap, so no billing concern.
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v5
