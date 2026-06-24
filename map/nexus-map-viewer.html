@@ -7,6 +7,7 @@
 <style>
   /* ── Tokens ──────────────────────────────────────────────────────────────── */
   :root {
+    color-scheme: dark;
     --bg:        #0b0f1a;
     --bg2:       #111827;
     --bg3:       #1a2235;
@@ -479,6 +480,7 @@
     background: rgba(255,255,255,0.04);
     border-radius: 3px;
     padding: 1px 5px;
+    color: var(--text);
   }
   .moon-chip.colonized { color: var(--sentinel); }
   .field-line {
@@ -1545,6 +1547,43 @@ function drawMap() {
   glow.addColorStop(1,   'transparent');
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, W, H);
+
+  // ── LY distance circles around selected system ──────────────────────────────
+  if (selectedSystem) {
+    const sc = dataToCanvas(selectedSystem.x, selectedSystem.y);
+    const maxRing = 200; // draw out to 200 LY
+
+    ctx.save();
+    for (let ly = 5; ly <= maxRing; ly += 5) {
+      const r = ly * viewScale;
+      // Skip rings too small to see
+      if (r < 2) continue;
+      const isMajor = (ly % 50 === 0);
+      ctx.beginPath();
+      ctx.arc(sc.x, sc.y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = isMajor
+        ? 'rgba(180, 210, 255, 0.28)'
+        : 'rgba(180, 210, 255, 0.10)';
+      ctx.lineWidth = isMajor ? 3 : 2;
+      ctx.setLineDash(isMajor ? [] : [3, 5]);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Label the major rings when zoomed in enough to read them
+    if (viewScale > 0.15) {
+      ctx.font = '10px monospace';
+      ctx.fillStyle = 'rgba(180, 210, 255, 0.55)';
+      ctx.textBaseline = 'middle';
+      for (let ly = 50; ly <= maxRing; ly += 50) {
+        const r = ly * viewScale;
+        if (r < 20) continue; // don't label rings that are too small
+        ctx.fillText(ly + ' LY', sc.x + 4, sc.y - r);
+      }
+      ctx.textBaseline = 'alphabetic';
+    }
+    ctx.restore();
+  }
 
   // ── Threat radius circles + in-range highlight set ────────────────────────
   const threatInRange = threatRadius > 0 ? getSystemsInRadius() : new Set();

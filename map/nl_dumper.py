@@ -58,8 +58,10 @@ CONFIG_FILE   = 'nl_config.txt'
 PROGRESS_FILE = 'nl_dumper_progress.json'
 OUTPUT_FILE   = 'nexus-map-clean.json'
 
-# Delay between requests in seconds. Increase if you see 429 errors.
-REQUEST_DELAY = 1.0
+# Delay between requests in seconds. The API rate limit is 360 req/min
+# (6 req/s); 0.3s = 3.3 req/s leaves comfortable headroom. Bump if you see
+# 429 errors.
+REQUEST_DELAY = 0.3
 
 # ── Load config ───────────────────────────────────────────────────────────────
 def load_config():
@@ -412,7 +414,7 @@ def pull_sectors(session, progress, test_mode=False):
     return all_sectors
 
 def pull_sector_systems(session, systems_by_id, progress,
-                        all_sectors, test_mode=False):
+                        all_sectors, baseline_summary=None, test_mode=False):
     """Phase 3: Pull system lists per sector, update hasColonies flags."""
     completed = set(progress['completed_sectors'])
     stations  = progress['stations']
@@ -452,11 +454,26 @@ def pull_sector_systems(session, systems_by_id, progress,
             if sys_data:
                 sector_systems = sys_data.get('systems') or []
                 colonized_ids  = []
+                # Delta tags: systems whose live summary matches what we already
+                # have in cache (from baseline). Their planet/asteroid data is
+                # very likely unchanged and we can skip the per-system fetch.
+                unchanged_ids  = set()
 
                 for s in sector_systems:
                     if s['id'] in systems_by_id:
-                        # Update live flags only — never wipe static data here
                         sys = systems_by_id[s['id']]
+                        # Compare the live sector summary against the PRE-mutation
+                        # baseline snapshot (captured in main() before Phase 1
+                        # overwrote these fields on the shared dict). If they
+                        # all match, the underlying planet data is very likely
+                        # unchanged and we can skip the per-system fetch.
+                        b = (baseline_summary or {}).get(s['id'])
+                        if (b and b['has_planets']
+                                and b['hasColonies']    == s.get('hasColonies', False)
+                                and b['colonizedCount'] == s.get('colonizedCount', 0)
+                                and b['isMarketHub']    == s.get('isMarketHub', False)):
+                            unchanged_ids.add(s['id'])
+                        # Update live flags — never wipe static data here.
                         sys['hasColonies']    = s.get('hasColonies', False)
                         sys['colonizedCount'] = s.get('colonizedCount', 0)
                         sys['isMarketHub']    = s.get('isMarketHub', False)
@@ -467,14 +484,22 @@ def pull_sector_systems(session, systems_by_id, progress,
                 print(f'  {len(colonized_ids)} colonized', end='', flush=True)
                 time.sleep(REQUEST_DELAY * 0.5)
 
-                # Planets for colonized systems only (unless all_planets enabled)
+                # Planets for colonized systems only (unless all_planets enabled).
+                # Delta: systems tagged `unchanged_ids` reuse cached planets/
+                # asteroidFields from baseline and skip the API call entirely.
+                # In steady state this is the biggest cost-saver — most systems
+                # don't change between daily runs.
                 if PULL['colonized_planets'] or PULL['all_planets']:
                     pull_targets = (
                         sector_systems if PULL['all_planets']
                         else [s for s in sector_systems if s.get('hasColonies')]
                     )
+                    delta_skipped = 0
                     for sys in pull_targets:
                         sys_id = sys['id']
+                        if sys_id in unchanged_ids:
+                            delta_skipped += 1
+                            continue   # cached planets+asteroidFields carry forward
                         p_data = get(session, f'/api/galaxy/systems/{sys_id}/planets',
                                      silent=True)
                         if p_data and sys_id in systems_by_id:
@@ -504,6 +529,8 @@ def pull_sector_systems(session, systems_by_id, progress,
                                     clean_asteroid(af) for af in asteroids
                                 ]
                         time.sleep(REQUEST_DELAY * 0.3)
+                    if delta_skipped:
+                        print(f' ({delta_skipped} unchanged)', end='', flush=True)
 
             # Stations for this sector — clear stale entries first, then rebuild
             if PULL['stations']:
@@ -659,11 +686,29 @@ def main():
     # Load existing output as merge baseline (skipped on --fresh)
     baseline = {} if fresh else load_existing_data(OUTPUT_FILE)
 
+    # Snapshot baseline summary fields BEFORE pull_galaxy_map mutates them.
+    # pull_galaxy_map shallow-copies baseline into systems_by_id and overwrites
+    # hasColonies / colonizedCount / isMarketHub on the shared dict objects —
+    # if Phase 3 compared post-mutation values it'd effectively be comparing
+    # live-to-live and the delta-skip would never (or randomly) fire. This
+    # snapshot is what the actual "did anything change since last dump?" check
+    # in pull_sector_systems compares against.
+    baseline_summary = {
+        sid: {
+            'hasColonies':    s.get('hasColonies', False),
+            'colonizedCount': s.get('colonizedCount', 0),
+            'isMarketHub':    s.get('isMarketHub', False),
+            'has_planets':    bool(s.get('planets')),
+        }
+        for sid, s in baseline.items()
+    }
+
     # ── Pulls ─────────────────────────────────────────────────────────────────
     systems_by_id = pull_galaxy_map(session, progress, baseline=baseline)
     all_sectors   = pull_sectors(session, progress, test_mode=test_mode)
     systems_by_id, stations = pull_sector_systems(
-        session, systems_by_id, progress, all_sectors, test_mode=test_mode
+        session, systems_by_id, progress, all_sectors,
+        baseline_summary=baseline_summary, test_mode=test_mode
     )
 
     # Optional pulls
