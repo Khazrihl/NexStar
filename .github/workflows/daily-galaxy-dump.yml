@@ -1,31 +1,37 @@
-name: Daily galaxy dump
+name: Galaxy dump
 
-# Runs nl_dumper.py once a day against the Nexus Legacy API using a token
-# stored as a repository secret, then commits the resulting
-# `map/nexus-map-clean.json` back to main if it changed. Goal is to keep the
-# galaxy file fresh without anyone running the dumper by hand.
+# Runs nl_dumper.py against the Nexus Legacy API using a token stored as a
+# repository secret, then commits the refreshed map/nexus-map-clean.json back
+# to main if it changed. Two cadences:
+#   * 08:00 UTC daily (= 3 AM US Central, CDT) -> full --fresh rebuild
+#   * every other hour on the hour            -> incremental delta merge
+#     (default run loads the committed map as a baseline and only re-fetches
+#      detail for systems whose summary changed).
+#
+# NOTE: GitHub cron is fixed-offset UTC and does NOT follow DST. 08:00 UTC is
+# 3 AM during US Central Daylight Time and 2 AM during Standard Time.
 
 on:
   schedule:
-    # 06:00 UTC daily — quiet hour for most regions, gives the bot plenty of
-    # headroom before peak gameplay.
-    - cron: '0 6 * * *'
-  workflow_dispatch:    # allow manual runs from the Actions tab
+    - cron: '0 8 * * *'          # 08:00 UTC (3 AM CT, CDT) — full fresh rebuild
+    - cron: '0 0-7,9-23 * * *'   # every other hour — incremental delta
+  workflow_dispatch:
+    inputs:
+      fresh:
+        description: 'Full fresh rebuild (--fresh) instead of incremental delta'
+        type: boolean
+        default: false
 
 permissions:
   contents: write       # only used to push the refreshed JSON back to this repo
 
 concurrency:
-  group: daily-galaxy-dump
+  group: galaxy-dump    # full + delta share one group so they never overlap
   cancel-in-progress: false
 
 jobs:
   dump:
     runs-on: ubuntu-latest
-    # Khaz's first scheduled run cancelled at 30 min with 283 target sectors
-    # still to pull (partial-visibility fix expanded scope). 90 min gives 3x
-    # headroom for the current state of the universe and any further growth.
-    # Free Actions on public repos have no minute cap, so no billing concern.
     timeout-minutes: 90
     steps:
       - name: Checkout
@@ -41,11 +47,9 @@ jobs:
 
       - name: Write nl_config.txt from secret
         env:
-          # A live Nexus Legacy session JWT. Get it from the `nexus_token`
-          # cookie in a browser logged into https://s0.nexuslegacy.space, then
-          # add it under Settings > Secrets and variables > Actions as
-          # NEXUS_TOKEN. The dumper sees the galaxy from this account's POV,
-          # so a leader account with broad scout coverage gives the best file.
+          # A live Nexus Legacy session JWT (the `nexus_token` cookie). The
+          # dumper sees the galaxy from this account's POV, so a leader account
+          # with broad scout coverage gives the best file.
           NEXUS_TOKEN: ${{ secrets.NEXUS_TOKEN }}
         run: |
           set -euo pipefail
@@ -53,12 +57,19 @@ jobs:
             echo "::error::Secret NEXUS_TOKEN is not set. Add it under Settings > Secrets and variables > Actions."
             exit 1
           fi
-          # nl_dumper.py expects `token=...` in nl_config.txt next to itself.
           printf 'token=%s\n' "$NEXUS_TOKEN" > map/nl_config.txt
 
       - name: Run dumper
         working-directory: map
-        run: python nl_dumper.py
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event.schedule }}" = '0 8 * * *' ] || [ "${{ github.event.inputs.fresh }}" = 'true' ]; then
+            echo "Full fresh rebuild (--fresh)"
+            python nl_dumper.py --fresh
+          else
+            echo "Incremental delta run"
+            python nl_dumper.py
+          fi
 
       - name: Commit if changed
         run: |
@@ -74,5 +85,10 @@ jobs:
           fi
           systems=$(jq -r '.meta.systemCount // 0' map/nexus-map-clean.json)
           captured=$(jq -r '.meta.capturedAt // "unknown"' map/nexus-map-clean.json)
-          git commit -m "Daily galaxy dump (${systems} systems, ${captured})"
+          if [ "${{ github.event.schedule }}" = '0 8 * * *' ] || [ "${{ github.event.inputs.fresh }}" = 'true' ]; then
+            kind="full"
+          else
+            kind="delta"
+          fi
+          git commit -m "Galaxy dump ${kind} (${systems} systems, ${captured})"
           git push
