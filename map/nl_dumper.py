@@ -4,9 +4,10 @@ Pulls galaxy data directly from the game API and writes a clean
 nexus-map-clean.json ready for use with the map viewer and discord script.
 
 Usage:
-    python nl_dumper.py              Full pull
+    python nl_dumper.py              Pull using all_planets setting in PULL config
+    python nl_dumper.py --full       Force all_planets=True  (daily full dump)
+    python nl_dumper.py --delta      Force all_planets=False (hourly delta — colonized only)
     python nl_dumper.py --test       Test pull (1 sector only, confirms endpoints)
-    python nl_dumper.py --fresh      Delete progress file and start over
 
 Config:
     nl_config.txt must exist in the same directory. Format:
@@ -14,11 +15,6 @@ Config:
 
 Output:
     nexus-map-clean.json        Final clean database
-    nl_dumper_progress.json     Checkpoint file (safe to delete after success)
-
-Resume:
-    If interrupted, just run again. Completed sectors are skipped.
-    Use --fresh to start a full new pull from scratch.
 """
 
 import json
@@ -53,10 +49,9 @@ PULL = {
 }
 
 # ── SETTINGS ──────────────────────────────────────────────────────────────────
-BASE_URL      = 'https://s0.nexuslegacy.space'
-CONFIG_FILE   = 'nl_config.txt'
-PROGRESS_FILE = 'nl_dumper_progress.json'
-OUTPUT_FILE   = 'nexus-map-clean.json'
+BASE_URL    = 'https://s0.nexuslegacy.space'
+CONFIG_FILE = 'nl_config.txt'
+OUTPUT_FILE = 'nexus-map-clean.json'
 
 # Delay between requests in seconds. The API rate limit is 360 req/min
 # (6 req/s); 0.3s = 3.3 req/s leaves comfortable headroom. Bump if you see
@@ -156,7 +151,7 @@ def load_existing_data(filename):
             data = json.load(f)
         systems = data.get('systems', [])
         baseline = {s['id']: s for s in systems}
-        colonized = sum(1 for s in systems if s.get('hasColonies'))
+        colonized    = sum(1 for s in systems if s.get('hasColonies'))
         with_planets = sum(1 for s in systems if s.get('planets'))
         print(f'  {len(baseline):,} systems in baseline '
               f'({colonized:,} colonized, {with_planets:,} with planet data)')
@@ -164,30 +159,6 @@ def load_existing_data(filename):
     except Exception as e:
         print(f'  WARNING: Could not load baseline — starting fresh ({e})')
         return {}
-
-# ── Progress checkpoint ───────────────────────────────────────────────────────
-def load_progress():
-    if os.path.exists(PROGRESS_FILE):
-        with open(PROGRESS_FILE) as f:
-            p = json.load(f)
-            print(f'Resuming from checkpoint '
-                  f'({len(p.get("completed_sectors", []))} sectors done)')
-            return p
-    return {
-        'completed_sectors': [],
-        'systems_by_id':     {},
-        'stations':          [],
-        'galaxy_map_done':   False,
-        'sectors_done':      False,
-        'markers_done':      False,
-        'marker_system_ids': [],
-        'arms':              [],
-        'all_sectors':       [],
-    }
-
-def save_progress(progress):
-    with open(PROGRESS_FILE, 'w') as f:
-        json.dump(progress, f, separators=(',', ':'))
 
 # ── Cleaning functions ────────────────────────────────────────────────────────
 def is_pvp(zone):
@@ -308,14 +279,10 @@ def clean_sector(s):
     }
 
 # ── Pull functions ────────────────────────────────────────────────────────────
-def pull_galaxy_map(session, progress, baseline=None):
+def pull_galaxy_map(session, baseline=None):
     """Phase 1: Pull all systems from galaxy map.
     If baseline is provided, seeds systems_by_id from it and only updates
     live flags — planet/moon/asteroid data on uncolonized systems is preserved."""
-    if progress['galaxy_map_done']:
-        print('[✓] Galaxy map already pulled')
-        return {int(k): v for k, v in progress['systems_by_id'].items()}
-
     print('[1] Pulling galaxy map...')
     data = get(session, '/api/galaxy/map')
     if not data:
@@ -357,18 +324,11 @@ def pull_galaxy_map(session, progress, baseline=None):
 
     print(f'  {updated_count:,} systems updated from baseline, {new_count:,} new')
     print(f'  {len(systems_by_id):,} total systems')
-    progress['galaxy_map_done'] = True
-    progress['systems_by_id']   = systems_by_id
-    save_progress(progress)
     time.sleep(REQUEST_DELAY)
     return systems_by_id
 
-def pull_sectors(session, progress, test_mode=False):
+def pull_sectors(session, test_mode=False):
     """Phase 2: Pull sector lists for all arms."""
-    if progress['sectors_done'] and progress['all_sectors']:
-        print('[✓] Sectors already pulled')
-        return progress['all_sectors']
-
     print('[2] Pulling sector lists...')
 
     # Try to discover arm IDs dynamically, fall back to known 1-6
@@ -408,16 +368,12 @@ def pull_sectors(session, progress, test_mode=False):
         time.sleep(REQUEST_DELAY)
 
     print(f'  Total sectors: {len(all_sectors)}')
-    progress['sectors_done'] = True
-    progress['all_sectors']  = all_sectors
-    save_progress(progress)
     return all_sectors
 
-def pull_sector_systems(session, systems_by_id, progress,
-                        all_sectors, baseline_summary=None, test_mode=False):
+def pull_sector_systems(session, systems_by_id, all_sectors,
+                        baseline_summary=None, test_mode=False):
     """Phase 3: Pull system lists per sector, update hasColonies flags."""
-    completed = set(progress['completed_sectors'])
-    stations  = progress['stations']
+    stations = []
 
     # Pull any sector the account has any visibility into. Even sectors marked
     # `partial` will return the systems we've personally revealed via probes /
@@ -433,19 +389,14 @@ def pull_sector_systems(session, systems_by_id, progress,
         target_sectors = target_sectors[:1]
         print(f'  TEST MODE: pulling 1 sector ({target_sectors[0]["name"]})')
 
-    remaining = [s for s in target_sectors if s['id'] not in completed]
-    total     = len(target_sectors)
-
+    total = len(target_sectors)
     print(f'[3] Pulling sector systems...')
-    print(f'  Target sectors : {total}')
-    print(f'  Already done   : {len(completed)}')
-    print(f'  Remaining      : {len(remaining)}')
+    print(f'  Target sectors: {total}')
 
-    for i, sector in enumerate(remaining):
-        sid       = sector['id']
-        done_count = len(completed) + i
-        pct       = (done_count / total) * 100
-        print(f'  [{done_count+1:4d}/{total}] {sector["name"]:35s} {pct:5.1f}%',
+    for i, sector in enumerate(target_sectors):
+        sid = sector['id']
+        pct = (i / total) * 100
+        print(f'  [{i+1:4d}/{total}] {sector["name"]:35s} {pct:5.1f}%',
               end='', flush=True)
 
         try:
@@ -503,9 +454,9 @@ def pull_sector_systems(session, systems_by_id, progress,
                         p_data = get(session, f'/api/galaxy/systems/{sys_id}/planets',
                                      silent=True)
                         if p_data and sys_id in systems_by_id:
-                            zone    = systems_by_id[sys_id]['securityZone']
-                            planets = p_data.get('planets') or []
-                            moons   = p_data.get('moons')   or []
+                            zone      = systems_by_id[sys_id]['securityZone']
+                            planets   = p_data.get('planets') or []
+                            moons     = p_data.get('moons')   or []
                             asteroids = p_data.get('asteroidFields') or []
 
                             # Build planet index for moon nesting
@@ -533,7 +484,7 @@ def pull_sector_systems(session, systems_by_id, progress,
                         print(f' ({delta_skipped} unchanged)', end='', flush=True)
 
             # Stations for this sector — clear stale entries first, then rebuild
-            if PULL['stations']:
+            if PULL['stations'] and sys_data:
                 # Clear existing station data for all systems in this sector
                 # so we don't accumulate stale ownership from previous pulls
                 for s in sector_systems:
@@ -553,31 +504,13 @@ def pull_sector_systems(session, systems_by_id, progress,
                         print(f'  {n_st}st', end='', flush=True)
 
             print()
-            completed.add(sid)
 
         except Exception as e:
             print(f'\n  ERROR on sector {sid}: {e}')
-            print('  Saving progress and stopping. Run again to resume.')
-            progress['completed_sectors'] = list(completed)
-            progress['systems_by_id']     = systems_by_id
-            progress['stations']          = stations
-            save_progress(progress)
+            print('  Run again to retry — no progress file to resume from.')
             raise SystemExit(1)
 
-        # Checkpoint every 25 sectors
-        if (i + 1) % 25 == 0:
-            progress['completed_sectors'] = list(completed)
-            progress['systems_by_id']     = systems_by_id
-            progress['stations']          = stations
-            save_progress(progress)
-
         time.sleep(REQUEST_DELAY)
-
-    # Final save
-    progress['completed_sectors'] = list(completed)
-    progress['systems_by_id']     = systems_by_id
-    progress['stations']          = stations
-    save_progress(progress)
 
     return systems_by_id, stations
 
@@ -662,12 +595,26 @@ def assemble(systems_by_id, stations, all_sectors, config,
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 def main():
-    test_mode = '--test'  in sys.argv
-    fresh     = '--fresh' in sys.argv
+    test_mode   = '--test'  in sys.argv
+    force_full  = '--full'  in sys.argv
+    force_delta = '--delta' in sys.argv
+
+    # --full / --delta override the all_planets config flag at runtime so
+    # daily full dumps and hourly deltas can run from the same script without
+    # maintaining two separate config files.
+    if force_full and force_delta:
+        print('ERROR: --full and --delta are mutually exclusive.')
+        raise SystemExit(1)
+    if force_full:
+        PULL['all_planets'] = True
+    if force_delta:
+        PULL['all_planets'] = False
 
     print('=' * 60)
     print('  NEXUS LEGACY MAP INTELLIGENCE DUMPER')
-    if test_mode: print('  *** TEST MODE — 1 sector only ***')
+    if test_mode:   print('  *** TEST MODE — 1 sector only ***')
+    if force_full:  print('  *** FULL DUMP — all_planets=True ***')
+    if force_delta: print('  *** DELTA — colonized systems only ***')
     print('=' * 60)
 
     start_time = time.time()
@@ -677,14 +624,8 @@ def main():
     config  = load_config()
     session = make_session(config['token'])
 
-    if fresh and os.path.exists(PROGRESS_FILE):
-        os.remove(PROGRESS_FILE)
-        print('Progress file cleared — starting fresh.')
-
-    progress = load_progress()
-
-    # Load existing output as merge baseline (skipped on --fresh)
-    baseline = {} if fresh else load_existing_data(OUTPUT_FILE)
+    # Load existing output as merge baseline
+    baseline = load_existing_data(OUTPUT_FILE)
 
     # Snapshot baseline summary fields BEFORE pull_galaxy_map mutates them.
     # pull_galaxy_map shallow-copies baseline into systems_by_id and overwrites
@@ -704,10 +645,10 @@ def main():
     }
 
     # ── Pulls ─────────────────────────────────────────────────────────────────
-    systems_by_id = pull_galaxy_map(session, progress, baseline=baseline)
-    all_sectors   = pull_sectors(session, progress, test_mode=test_mode)
+    systems_by_id = pull_galaxy_map(session, baseline=baseline)
+    all_sectors   = pull_sectors(session, test_mode=test_mode)
     systems_by_id, stations = pull_sector_systems(
-        session, systems_by_id, progress, all_sectors,
+        session, systems_by_id, all_sectors,
         baseline_summary=baseline_summary, test_mode=test_mode
     )
 
@@ -736,9 +677,7 @@ def main():
     print(f'Finished: {datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")}')
     print(f'Elapsed:  {elapsed_str}')
 
-    if not test_mode:
-        print(f'\nSafe to delete {PROGRESS_FILE} now.')
-    else:
+    if test_mode:
         print('\nTest complete. Check nexus-map-TEST.json to verify output.')
         print('Run without --test for full pull.')
 
