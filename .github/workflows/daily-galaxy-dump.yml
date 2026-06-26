@@ -65,11 +65,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ github.event.schedule }}" = '0 8 * * *' ] || [ "${{ github.event.inputs.fresh }}" = 'true' ]; then
-            echo "Full fresh rebuild (--fresh)"
-            python nl_dumper.py --fresh
+            echo "Full dump"
+            python nl_dumper.py --full
           else
             echo "Incremental delta run"
-            python nl_dumper.py
+            python nl_dumper.py --delta
           fi
 
       - name: Commit if changed
@@ -78,7 +78,7 @@ jobs:
           git config user.name  "nexstar-galaxy-bot[bot]"
           git config user.email "actions@users.noreply.github.com"
           # Never commit the token file or intermediate progress checkpoint.
-          rm -f map/nl_config.txt map/nl_dumper_progress.json
+          rm -f map/nl_config.txt
           git add map/nexus-map-clean.json
           if git diff --cached --quiet -- map/nexus-map-clean.json; then
             echo "Galaxy unchanged since last sync; nothing to commit."
