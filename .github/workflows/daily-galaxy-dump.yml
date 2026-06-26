@@ -14,7 +14,8 @@ name: Galaxy dump
 on:
   schedule:
     - cron: '0 8 * * *'          # 08:00 UTC (3 AM CT, CDT) — full fresh rebuild
-    - cron: '0 0-7,9-23 * * *'   # every other hour — incremental delta
+    # Hourly delta is triggered from the VPS bot via workflow_dispatch
+    # (GitHub high-frequency cron is unreliable); see GALAXY_DISPATCH_* in the bot.
   workflow_dispatch:
     inputs:
       fresh:
