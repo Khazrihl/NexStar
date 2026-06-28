@@ -897,6 +897,18 @@
           <input type="checkbox" id="f-unaffiliated">
           Unaffiliated players only
         </label>
+        <label class="check-label">
+          <input type="checkbox" id="f-neutral-open">
+          Neutral stations — Open space
+        </label>
+        <label class="check-label">
+          <input type="checkbox" id="f-neutral-dead">
+          Neutral stations — Dead space
+        </label>
+        <label class="check-label">
+          <input type="checkbox" id="f-contested">
+          Contested stations only
+        </label>
       </div>
 
       <button id="btn-clear">Clear All</button>
@@ -1270,7 +1282,7 @@ function ingestData(data) {
 }
 
 // ── Filters ───────────────────────────────────────────────────────────────────
-const filterIds = ['f-arm','f-sector','f-zone','f-ptype','f-minslots','f-fieldtype','f-richness','f-alliance','f-moontype','f-moonslots','f-colonized','f-uncolonized','f-unaffiliated'];
+const filterIds = ['f-arm','f-sector','f-zone','f-ptype','f-minslots','f-fieldtype','f-richness','f-alliance','f-moontype','f-moonslots','f-colonized','f-uncolonized','f-unaffiliated','f-neutral-open','f-neutral-dead','f-contested'];
 filterIds.forEach(id => {
   const el = document.getElementById(id);
   const evt = (el.tagName === 'SELECT' || el.type === 'checkbox') ? 'change' : 'input';
@@ -1290,7 +1302,10 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   document.getElementById('f-moonslots').value = '';
   document.getElementById('f-colonized').checked    = false;
   document.getElementById('f-uncolonized').checked  = false;
-  document.getElementById('f-unaffiliated').checked = false;
+  document.getElementById('f-unaffiliated').checked  = false;
+  document.getElementById('f-neutral-open').checked  = false;
+  document.getElementById('f-neutral-dead').checked  = false;
+  document.getElementById('f-contested').checked     = false;
   // Clear search
   document.getElementById('f-search').value = '';
   document.getElementById('f-search-clear').style.display = 'none';
@@ -1319,7 +1334,10 @@ function getFilters() {
     minMoonSlots: parseInt(document.getElementById('f-moonslots').value) || 0,
     colonized:    document.getElementById('f-colonized').checked,
     uncolonized:  document.getElementById('f-uncolonized').checked,
-    unaffiliated: document.getElementById('f-unaffiliated').checked,
+    unaffiliated:  document.getElementById('f-unaffiliated').checked,
+    neutralOpen:   document.getElementById('f-neutral-open').checked,
+    neutralDead:   document.getElementById('f-neutral-dead').checked,
+    contested:     document.getElementById('f-contested').checked,
   };
 }
 
@@ -1333,6 +1351,20 @@ function systemPasses(s, f) {
   if (f.colonized   && !s.planets.some(p =>  p.userId)) return false;
   // Uncolonized — system must have no colonized planets at all
   if (f.uncolonized &&  s.planets.some(p =>  p.userId)) return false;
+
+  // Neutral stations — open/dead space only (sentinel excluded by design).
+  // A system passes if it has at least one unowned station in the target zone.
+  if (f.neutralOpen || f.neutralDead) {
+    const zone = (s.securityZone || '').toLowerCase();
+    if (f.neutralOpen && zone !== 'open') return false;
+    if (f.neutralDead && zone !== 'dead') return false;
+    if (!(s.stations || []).some(st => !st.ownerAllianceTag)) return false;
+  }
+
+  // Contested — system must have at least one station with an active capture timer
+  if (f.contested) {
+    if (!(s.stations || []).some(st => st.captureEndsAt)) return false;
+  }
 
   // Unaffiliated — system must have a colony with no alliance tag
   if (f.unaffiliated) {
