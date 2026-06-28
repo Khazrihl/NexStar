@@ -505,91 +505,6 @@
     flex-shrink: 0;
   }
 
-  /* ── Threat assessment panel ─────────────────────────────────────────────── */
-  .panel-toggle {
-    width: 100%;
-    background: none;
-    border: none;
-    border-bottom: 1px solid var(--border);
-    color: var(--text-dim);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    padding: 9px 14px;
-    text-align: left;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    transition: color 0.15s;
-    flex-shrink: 0;
-  }
-  .panel-toggle:hover { color: var(--accent); }
-  .panel-toggle.open { color: var(--dead); border-bottom-color: var(--dead); }
-  .panel-toggle.open .chevron { transform: rotate(180deg); }
-
-  .collapsible-panel {
-    display: none;
-    padding: 10px 14px 14px;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .collapsible-panel.open { display: block; }
-
-  .ref-toggle {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 5px;
-    margin-top: 2px;
-  }
-  .ref-btn {
-    padding: 5px 4px;
-    background: var(--bg3);
-    border: 1px solid var(--border2);
-    border-radius: 4px;
-    color: var(--text-dim);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    cursor: pointer;
-    transition: all 0.15s;
-    text-align: center;
-  }
-  .ref-btn:hover { border-color: var(--dead); color: var(--text); }
-  .ref-btn.active { background: rgba(248,113,113,0.1); border-color: var(--dead); color: var(--dead); }
-
-  input[type=range]#f-radius {
-    width: 100%;
-    accent-color: var(--dead);
-    margin-top: 4px;
-  }
-
-  #threat-summary {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--text-dim);
-    margin: 8px 0 6px;
-    line-height: 1.7;
-    min-height: 14px;
-  }
-  #threat-summary .t-dead  { color: var(--dead); }
-  #threat-summary .t-open  { color: var(--open); }
-  #threat-summary .t-count { color: var(--text); font-weight: bold; }
-
-  #btn-clear-threat {
-    width: 100%;
-    padding: 6px;
-    background: transparent;
-    border: 1px solid var(--border2);
-    border-radius: 4px;
-    color: var(--text-dim);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
-  }
-  #btn-clear-threat:hover { border-color: var(--dead); color: var(--dead); }
-
   /* ── Settings panel ──────────────────────────────────────────────────────── */
   #settings-toggle {
     width: 100%;
@@ -914,33 +829,12 @@
       <button id="btn-clear">Clear All</button>
     </div>
 
-    <!-- Threat Assessment -->
-    <button id="threat-toggle" class="panel-toggle">
-      <span>⚔ Threat Assessment</span>
-      <i class="chevron">▾</i>
-    </button>
-    <div id="threat-panel" class="collapsible-panel">
-      <div class="settings-row">
-        <label>Reference Points</label>
-        <div class="ref-toggle">
-          <button class="ref-btn active" data-ref="home">Home Alliance</button>
-          <button class="ref-btn" data-ref="both">Both</button>
-        </div>
-      </div>
-      <div class="settings-row">
-        <label>Proximity Radius — <span id="radius-label">Off</span></label>
-        <input type="range" id="f-radius" min="0" max="500" step="25" value="0">
-      </div>
-      <div id="threat-summary"></div>
-      <button id="btn-clear-threat">Clear Threat Overlay</button>
-    </div>
-
     <!-- Settings -->
-    <button id="settings-toggle" class="panel-toggle">
+    <button id="settings-toggle">
       <span>⚙ Alliance Settings</span>
       <i class="chevron">▾</i>
     </button>
-    <div id="settings-panel" class="collapsible-panel">
+    <div id="settings-panel">
       <div class="settings-row">
         <label>Home Alliance Tag</label>
         <input type="text" id="s-tag" placeholder="e.g. NAV" maxlength="12">
@@ -1094,92 +988,6 @@ function flashSaved(msg, isError) {
   el.textContent = msg;
   el.style.color = isError ? 'var(--dead)' : 'var(--sentinel)';
   setTimeout(() => { el.textContent = ''; }, 2500);
-}
-
-// ── Threat Assessment ─────────────────────────────────────────────────────────
-let threatRadius  = 0;
-let threatRef     = 'home'; // 'home' | 'both'
-
-document.getElementById('threat-toggle').addEventListener('click', function() {
-  this.classList.toggle('open');
-  document.getElementById('threat-panel').classList.toggle('open');
-});
-
-// Reference point toggle buttons
-document.querySelectorAll('.ref-btn').forEach(btn => {
-  btn.addEventListener('click', function() {
-    document.querySelectorAll('.ref-btn').forEach(b => b.classList.remove('active'));
-    this.classList.add('active');
-    threatRef = this.dataset.ref;
-    drawMap();
-  });
-});
-
-// Radius slider
-document.getElementById('f-radius').addEventListener('input', function() {
-  threatRadius = parseInt(this.value);
-  document.getElementById('radius-label').textContent =
-    threatRadius === 0 ? 'Off' : `${threatRadius} units`;
-  updateThreatSummary();
-  drawMap();
-});
-
-document.getElementById('btn-clear-threat').addEventListener('click', () => {
-  threatRadius = 0;
-  document.getElementById('f-radius').value = 0;
-  document.getElementById('radius-label').textContent = 'Off';
-  document.getElementById('threat-summary').innerHTML = '';
-  drawMap();
-});
-
-function getThreatRefPoints() {
-  if (!allSystems.length) return [];
-  const homeTag = CONFIG.HOME_ALLIANCE.toUpperCase();
-  const refs = [];
-  allSystems.forEach(s => {
-    const hasHome = s.planets.some(p => (p.ownerAllianceTag || '').toUpperCase() === homeTag);
-    if (hasHome) refs.push({ x: s.x, y: s.y, name: s.name });
-  });
-  return refs;
-}
-
-function getRivalThreatSystems() {
-  if (!allSystems.length) return [];
-  const homeTag = CONFIG.HOME_ALLIANCE.toUpperCase();
-  return allSystems.filter(s =>
-    s.isPvpZone &&
-    s.planets.some(p => p.userId && (p.ownerAllianceTag || '').toUpperCase() !== homeTag)
-  );
-}
-
-function getSystemsInRadius() {
-  if (threatRadius === 0) return new Set();
-  const refs   = getThreatRefPoints();
-  const rivals = getRivalThreatSystems();
-  const inRange = new Set();
-  rivals.forEach(s => {
-    const nearest = refs.reduce((best, r) => {
-      const d = Math.hypot(s.x - r.x, s.y - r.y);
-      return d < best ? d : best;
-    }, Infinity);
-    if (nearest <= threatRadius) inRange.add(s.id);
-  });
-  return inRange;
-}
-
-function updateThreatSummary() {
-  const el = document.getElementById('threat-summary');
-  if (threatRadius === 0 || !allSystems.length) { el.innerHTML = ''; return; }
-  const inRange  = getSystemsInRadius();
-  const dead     = [...inRange].filter(id => {
-    const s = allSystems.find(s => s.id === id);
-    return s && (s.securityZone || '') === 'dead';
-  }).length;
-  const open = inRange.size - dead;
-  el.innerHTML =
-    `<span class="t-count">${inRange.size}</span> rival systems in range` +
-    `<br><span class="t-dead">⬤</span> ${dead} dead &nbsp;` +
-    `<span class="t-open">⬤</span> ${open} open`;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1600,40 +1408,6 @@ function drawMap() {
     ctx.restore();
   }
 
-  // ── Threat radius circles + in-range highlight set ────────────────────────
-  const threatInRange = threatRadius > 0 ? getSystemsInRadius() : new Set();
-
-  if (threatRadius > 0) {
-    const refs = getThreatRefPoints();
-    const circleR = threatRadius * viewScale;
-
-    // Filled zone per reference point
-    ctx.save();
-    refs.forEach(r => {
-      const pt = dataToCanvas(r.x, r.y);
-      const fill = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, circleR);
-      fill.addColorStop(0,   'rgba(248,113,113,0.06)');
-      fill.addColorStop(0.7, 'rgba(248,113,113,0.04)');
-      fill.addColorStop(1,   'rgba(248,113,113,0)');
-      ctx.fillStyle = fill;
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, circleR, 0, Math.PI * 2);
-      ctx.fill();
-    });
-    // Crisp ring edge
-    ctx.strokeStyle = 'rgba(248,113,113,0.35)';
-    ctx.lineWidth   = 1;
-    ctx.setLineDash([4, 4]);
-    refs.forEach(r => {
-      const pt = dataToCanvas(r.x, r.y);
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, circleR, 0, Math.PI * 2);
-      ctx.stroke();
-    });
-    ctx.setLineDash([]);
-    ctx.restore();
-  }
-
   // ── Alliance heatmap pass (drawn before dots) ──────────────────────────────
   if (allianceFilter && filteredSystems.length > 0) {
     const blobR = Math.max(18, Math.min(80, viewScale * 28));
@@ -1737,24 +1511,6 @@ function drawMap() {
         ctx.globalAlpha = 1;
       }
       return;
-    }
-
-    // ── Threat highlighted rivals — bright ring + boosted dot ─────────────
-    const inThreatRange = threatInRange.has(s.id);
-    if (inThreatRange) {
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, baseR + 5, 0, Math.PI*2);
-      ctx.strokeStyle = 'rgba(248,113,113,0.9)';
-      ctx.lineWidth   = 1.5;
-      ctx.stroke();
-      // Pulse glow
-      const tg = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, baseR + 8);
-      tg.addColorStop(0,   'rgba(248,113,113,0.3)');
-      tg.addColorStop(1,   'rgba(248,113,113,0)');
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, baseR + 8, 0, Math.PI*2);
-      ctx.fillStyle = tg;
-      ctx.fill();
     }
 
     // ── Normal dot OR station diamond ──────────────────────────────────────
@@ -1916,23 +1672,7 @@ function showPopup(s) {
 
   // Star info
   const armLabel = parsed ? `${ARM_NAMES[parsed.arm] || parsed.arm} Arm · Sector ${parsed.sector}` : '';
-  let distLine = '';
-  if (threatRadius > 0) {
-    const refs = getThreatRefPoints();
-    if (refs.length) {
-      const nearest = refs.reduce((best, r) => {
-        const d = Math.hypot(s.x - r.x, s.y - r.y);
-        return d < best.d ? { d, name: r.name } : best;
-      }, { d: Infinity, name: '' });
-      const inRange = nearest.d <= threatRadius;
-      const color   = inRange ? 'var(--dead)' : 'var(--text-dim)';
-      distLine = `<div style="font-size:10px;color:${color};margin-bottom:4px">` +
-        `⚔ ${nearest.d.toFixed(1)} units from ${nearest.name}` +
-        (inRange ? ' — <span style="color:var(--dead)">IN RANGE</span>' : '') +
-        `</div>`;
-    }
-  }
-  html += `<div class="popup-star">★ ${s.starType || '?'}${armLabel ? ' · '+armLabel : ''}</div>${distLine}`;
+  html += `<div class="popup-star">★ ${s.starType || '?'}${armLabel ? ' · '+armLabel : ''}</div>`;
 
   // Planets
   const sortedPlanets = [...s.planets].sort((a,b) => (a.position||0)-(b.position||0));
