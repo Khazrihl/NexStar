@@ -93,24 +93,7 @@
     overflow: hidden;
   }
 
-  #load-zone {
-    margin: 14px;
-    border: 1px dashed var(--border2);
-    border-radius: 6px;
-    padding: 16px 12px;
-    text-align: center;
-    cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
-    flex-shrink: 0;
-  }
-  #load-zone:hover, #load-zone.drag-over {
-    border-color: var(--accent);
-    background: rgba(245,158,11,0.05);
-  }
-  #load-zone .icon { font-size: 22px; margin-bottom: 6px; }
-  #load-zone p { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
-  #load-zone strong { color: var(--text); }
-  #file-input { display: none; }
+
 
   .sidebar-section {
     padding: 0 14px 12px;
@@ -716,11 +699,11 @@
     gap: 12px;
     pointer-events: none;
   }
-  #empty-state .big { font-size: 48px; opacity: 0.15; }
+  #empty-state .big { font-size: 48px; opacity: 0.4; }
   #empty-state p {
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--text-dim);
+    color: var(--dead);
     text-align: center;
     line-height: 1.7;
   }
@@ -782,11 +765,22 @@
   <!-- Sidebar -->
   <div id="sidebar">
 
-    <div id="load-zone" onclick="document.getElementById('file-input').click()">
-      <div class="icon">🗂️</div>
-      <p><strong>Load local override</strong><br>Click or drag & drop a nexus-map-clean.json</p>
+    <!-- Legend — at top of sidebar -->
+    <div class="sidebar-section">
+      <div class="section-label">Zone Legend</div>
+      <div class="legend-grid">
+        <div class="legend-item"><div class="dot" style="background:var(--sentinel)"></div> Sentinel</div>
+        <div class="legend-item"><div class="dot" style="background:var(--open)"></div> Open</div>
+        <div class="legend-item"><div class="dot" style="background:var(--dead)"></div> Dead</div>
+        <div class="legend-item"><div class="dot" style="background:var(--rift)"></div> Rift</div>
+        <div class="legend-item"><div id="legend-home-dot" class="dot"></div> <span id="legend-home-label">Home</span> Colony</div>
+        <div class="legend-item"><div class="dot" style="background:var(--text-dim)"></div> Unscanned</div>
+        <div class="legend-item" style="grid-column:1/-1;gap:8px">
+          <div style="width:8px;height:8px;background:var(--open);transform:rotate(45deg);flex-shrink:0"></div>
+          Station (zone color · home=glowing · sentinel=faint)
+        </div>
+      </div>
     </div>
-    <input type="file" id="file-input" accept=".json">
 
     <div id="search-wrap">
       <input type="text" id="f-search" placeholder="System, player, [TAG], sector…" autocomplete="off" spellcheck="false">
@@ -828,26 +822,28 @@
         </select>
       </div>
 
-      <div class="filter-row">
-        <label>Planet Type</label>
-        <select id="f-ptype">
-          <option value="">Any</option>
-          <option value="terra">🟢 Terra</option>
-          <option value="rocky">🟤 Rocky</option>
-          <option value="gas_giant">🟡 Gas Giant</option>
-          <option value="ice">🔵 Ice</option>
-          <option value="volcanic">🔴 Volcanic</option>
-          <option value="crystalline">💎 Crystalline</option>
-        </select>
-      </div>
-
       <div class="row2">
+        <div class="filter-row">
+          <label>Planet Type</label>
+          <select id="f-ptype">
+            <option value="">Any</option>
+            <option value="terra">🟢 Terra</option>
+            <option value="rocky">🟤 Rocky</option>
+            <option value="gas_giant">🟡 Gas Giant</option>
+            <option value="ice">🔵 Ice</option>
+            <option value="volcanic">🔴 Volcanic</option>
+            <option value="crystalline">💎 Crystalline</option>
+          </select>
+        </div>
         <div class="filter-row">
           <label>Min Slots</label>
           <input type="number" id="f-minslots" placeholder="0" min="0" max="30">
         </div>
+      </div>
+
+      <div class="row2">
         <div class="filter-row">
-          <label>Field Type</label>
+          <label>Belt Type</label>
           <select id="f-fieldtype">
             <option value="">Any</option>
             <option value="ore">⛏️ Ore</option>
@@ -858,22 +854,34 @@
             <option value="quantum">🔮 Quantum</option>
           </select>
         </div>
-      </div>
-
-      <div class="row2">
         <div class="filter-row">
           <label>Min Richness</label>
           <input type="number" id="f-richness" placeholder="0.0" min="0" max="3" step="0.1">
         </div>
+      </div>
+
+      <div class="row2">
         <div class="filter-row">
-          <label>Alliance Tag</label>
-          <input type="text" id="f-alliance" placeholder="e.g. NAV">
+          <label>Moon Type</label>
+          <select id="f-moontype">
+            <option value="">Any</option>
+            <option value="barren">⬛ Barren</option>
+            <option value="metallic">🔘 Metallic</option>
+            <option value="icy">🔵 Icy</option>
+            <option value="volcanic">🔴 Volcanic</option>
+            <option value="hollow">🌑 Hollow</option>
+            <option value="ancient">🟣 Ancient</option>
+          </select>
+        </div>
+        <div class="filter-row">
+          <label>Min Moon Slots</label>
+          <input type="number" id="f-moonslots" placeholder="0" min="0" max="20">
         </div>
       </div>
 
       <div class="filter-row">
-        <label>Player Name</label>
-        <input type="text" id="f-player" placeholder="e.g. Khazrihl">
+        <label>Alliance Tag <span style="font-size:9px;color:var(--text-dim);font-weight:normal">(comma-sep: NAV,POT,EVL,SAINT)</span></label>
+        <input type="text" id="f-alliance" placeholder="e.g. NAV or NAV,POT,EVL,SAINT">
       </div>
 
       <div class="filter-checks">
@@ -882,29 +890,16 @@
           Colonized systems only
         </label>
         <label class="check-label">
+          <input type="checkbox" id="f-uncolonized">
+          Uncolonized systems only
+        </label>
+        <label class="check-label">
           <input type="checkbox" id="f-unaffiliated">
           Unaffiliated players only
         </label>
       </div>
 
       <button id="btn-clear">Clear All</button>
-    </div>
-
-    <!-- Legend -->
-    <div class="sidebar-section">
-      <div class="section-label">Zone Legend</div>
-      <div class="legend-grid">
-        <div class="legend-item"><div class="dot" style="background:var(--sentinel)"></div> Sentinel</div>
-        <div class="legend-item"><div class="dot" style="background:var(--open)"></div> Open</div>
-        <div class="legend-item"><div class="dot" style="background:var(--dead)"></div> Dead</div>
-        <div class="legend-item"><div class="dot" style="background:var(--rift)"></div> Rift</div>
-        <div class="legend-item"><div id="legend-home-dot" class="dot"></div> <span id="legend-home-label">Home</span> Colony</div>
-        <div class="legend-item"><div class="dot" style="background:var(--text-dim)"></div> Unscanned</div>
-        <div class="legend-item" style="grid-column:1/-1;gap:8px">
-          <div style="width:8px;height:8px;background:var(--open);transform:rotate(45deg);flex-shrink:0"></div>
-          Station (zone color · home=glowing · sentinel=faint)
-        </div>
-      </div>
     </div>
 
     <!-- Threat Assessment -->
@@ -955,8 +950,8 @@
   <div id="map-area">
     <canvas id="map-canvas"></canvas>
     <div id="empty-state">
-      <div class="big">🌌</div>
-      <p>Load a nexus-map-clean.json file<br>to render the galaxy.</p>
+      <div class="big">⚠</div>
+      <p id="empty-state-msg">Could not load nexus-map-clean.json<br>Check that the file exists in the repo.</p>
     </div>
     <div id="loading-state">
       <div class="spinner"></div>
@@ -1231,33 +1226,7 @@ const resultsPl= document.getElementById('results-panel');
 const emptyState = document.getElementById('empty-state');
 
 // ── File loading ──────────────────────────────────────────────────────────────
-document.getElementById('file-input').addEventListener('change', e => {
-  const file = e.target.files[0];
-  if (file) loadFile(file);
-});
-
-const loadZone = document.getElementById('load-zone');
-loadZone.addEventListener('dragover', e => { e.preventDefault(); loadZone.classList.add('drag-over'); });
-loadZone.addEventListener('dragleave', () => loadZone.classList.remove('drag-over'));
-loadZone.addEventListener('drop', e => {
-  e.preventDefault();
-  loadZone.classList.remove('drag-over');
-  const file = e.dataTransfer.files[0];
-  if (file) loadFile(file);
-});
-
-function loadFile(file) {
-  const reader = new FileReader();
-  reader.onload = e => {
-    try {
-      const data = JSON.parse(e.target.result);
-      ingestData(data);
-    } catch(err) {
-      alert('Failed to parse JSON: ' + err.message);
-    }
-  };
-  reader.readAsText(file);
-}
+// Local file override removed — data is fetched automatically on load.
 
 function ingestData(data) {
   let systems = [];
@@ -1301,7 +1270,7 @@ function ingestData(data) {
 }
 
 // ── Filters ───────────────────────────────────────────────────────────────────
-const filterIds = ['f-arm','f-sector','f-zone','f-ptype','f-minslots','f-fieldtype','f-richness','f-alliance','f-player','f-colonized','f-unaffiliated'];
+const filterIds = ['f-arm','f-sector','f-zone','f-ptype','f-minslots','f-fieldtype','f-richness','f-alliance','f-moontype','f-moonslots','f-colonized','f-uncolonized','f-unaffiliated'];
 filterIds.forEach(id => {
   const el = document.getElementById(id);
   const evt = (el.tagName === 'SELECT' || el.type === 'checkbox') ? 'change' : 'input';
@@ -1317,8 +1286,10 @@ document.getElementById('btn-clear').addEventListener('click', () => {
   document.getElementById('f-fieldtype').value = '';
   document.getElementById('f-richness').value  = '';
   document.getElementById('f-alliance').value  = '';
-  document.getElementById('f-player').value    = '';
+  document.getElementById('f-moontype').value  = '';
+  document.getElementById('f-moonslots').value = '';
   document.getElementById('f-colonized').checked    = false;
+  document.getElementById('f-uncolonized').checked  = false;
   document.getElementById('f-unaffiliated').checked = false;
   // Clear search
   document.getElementById('f-search').value = '';
@@ -1343,9 +1314,11 @@ function getFilters() {
     minSlots:     parseInt(document.getElementById('f-minslots').value) || 0,
     fieldType:    document.getElementById('f-fieldtype').value,
     minRich:      parseFloat(document.getElementById('f-richness').value) || 0,
-    alliance:     document.getElementById('f-alliance').value.trim().toUpperCase(),
-    player:       document.getElementById('f-player').value.trim().toLowerCase(),
+    alliance:     document.getElementById('f-alliance').value.split(',').map(t => t.trim().toUpperCase()).filter(Boolean),
+    moonType:     document.getElementById('f-moontype').value.toLowerCase(),
+    minMoonSlots: parseInt(document.getElementById('f-moonslots').value) || 0,
     colonized:    document.getElementById('f-colonized').checked,
+    uncolonized:  document.getElementById('f-uncolonized').checked,
     unaffiliated: document.getElementById('f-unaffiliated').checked,
   };
 }
@@ -1356,24 +1329,19 @@ function systemPasses(s, f) {
   if (f.sector && (!parsed || parsed.sector !== f.sector))         return false;
   if (f.zone   && (s.securityZone || '').toLowerCase() !== f.zone) return false;
 
-  // Colonized default — system must have at least one colonized planet
-  if (f.colonized && !s.planets.some(p => p.userId)) return false;
+  // Colonized — system must have at least one colonized planet
+  if (f.colonized   && !s.planets.some(p =>  p.userId)) return false;
+  // Uncolonized — system must have no colonized planets at all
+  if (f.uncolonized &&  s.planets.some(p =>  p.userId)) return false;
 
   // Unaffiliated — system must have a colony with no alliance tag
   if (f.unaffiliated) {
     if (!s.planets.some(p => p.userId && !p.ownerAllianceTag)) return false;
   }
 
-  // Player name search — partial, case-insensitive
-  if (f.player) {
-    if (!s.planets.some(p => (p.ownerName || '').toLowerCase().includes(f.player)))
-      return false;
-  }
-
-  // Alliance tag
-  if (f.alliance) {
-    const tag = f.alliance;
-    return s.planets.some(p => (p.ownerAllianceTag || '').toUpperCase() === tag);
+  // Alliance tag(s) — comma-separated, any match passes
+  if (f.alliance.length) {
+    return s.planets.some(p => f.alliance.includes((p.ownerAllianceTag || '').toUpperCase()));
   }
 
   const ptypeLower = f.ptype.toLowerCase();
@@ -1392,12 +1360,25 @@ function systemPasses(s, f) {
       return true;
     });
 
+  // Moon filter — system passes if any planet has a qualifying moon.
+  // Moon type and min slots stack: both must be satisfied by the same moon.
+  const hasMoonFilter = f.moonType || f.minMoonSlots;
+  const moonOk = !hasMoonFilter ? true :
+    s.planets.some(p =>
+      (p.moons || []).some(m => {
+        if (f.moonType     && (m.moonType || '').toLowerCase() !== f.moonType) return false;
+        if (f.minMoonSlots && moonSlots(m) < f.minMoonSlots)                   return false;
+        return true;
+      })
+    );
+
   const hasPlFilter = f.ptype || f.minSlots;
   const hasAfFilter = f.fieldType || f.minRich;
 
-  if (hasPlFilter && hasAfFilter) return planetOk && fieldOk;
-  if (hasPlFilter) return planetOk;
-  if (hasAfFilter) return fieldOk;
+  // All active filter groups must pass
+  if (hasPlFilter && !planetOk) return false;
+  if (hasAfFilter && !fieldOk)  return false;
+  if (hasMoonFilter && !moonOk) return false;
   return true;
 }
 
@@ -2273,7 +2254,11 @@ function executeSearchItem(item) {
       drawMap();
     }
   } else if (item.type === 'alliance') {
-    document.getElementById('f-alliance').value = item.data;
+    // Append to existing comma-separated list or set fresh
+    const existing = document.getElementById('f-alliance').value.trim();
+    const tags = existing ? existing.split(',').map(t => t.trim()).filter(Boolean) : [];
+    if (!tags.includes(item.data)) tags.push(item.data);
+    document.getElementById('f-alliance').value = tags.join(',');
     applyFilters();
     searchState = { query: searchInput.value, type: 'alliance', results: [], idx: 0 };
   } else if (item.type === 'player') {
@@ -2322,15 +2307,12 @@ resizeCanvas();
 
 // ── Auto-fetch map data on load ───────────────────────────────────────────────
 (function fetchDefaultData() {
-  const loadZoneEl  = document.getElementById('load-zone');
-  const statusEl    = loadZoneEl.querySelector('p');
-  const loadingEl   = document.getElementById('loading-state');
-  const emptyEl     = document.getElementById('empty-state');
+  const loadingEl = document.getElementById('loading-state');
+  const emptyEl   = document.getElementById('empty-state');
 
   // Show spinner, hide the static empty state
   emptyEl.style.display = 'none';
   loadingEl.classList.add('visible');
-  statusEl.innerHTML = '<strong>Loading map data…</strong><br>Fetching nexus-map-clean.json';
 
   fetch('nexus-map-clean.json')
     .then(res => {
@@ -2340,13 +2322,13 @@ resizeCanvas();
     .then(data => {
       loadingEl.classList.remove('visible');
       ingestData(data);
-      statusEl.innerHTML = '<strong>Load local override</strong><br>Click or drag & drop a nexus-map-clean.json';
     })
     .catch(err => {
       console.warn('Auto-fetch failed:', err);
       loadingEl.classList.remove('visible');
+      document.getElementById('empty-state-msg').textContent =
+        `Could not load nexus-map-clean.json (${err.message})`;
       emptyEl.style.display = 'flex';
-      statusEl.innerHTML = '<strong>Load nexus-map-clean.json</strong><br>Click or drag & drop';
     });
 })();
 </script>
