@@ -1673,13 +1673,18 @@ function drawMap() {
     // ── Home alliance: bright colored dot + glow, always on top ───────────
     if (isHome) {
       const { r, g, b } = homeRgb;
-      const glowAlpha = inFilter ? 0.45 : 0.25;
-      const homeGlow = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, baseR + 7);
+      // At high zoom dots are far apart so glows don't stack — keep full
+      // alpha. At low zoom (galaxy view) many dots overlap so reduce alpha
+      // to avoid a blown-out wash. Crossover around viewScale ~1.
+      const zoomFactor  = Math.min(1, viewScale * 0.8);
+      const glowAlpha   = (inFilter ? 0.45 : 0.25) * zoomFactor;
+      const glowRadius  = baseR + Math.max(3, 7 * zoomFactor);
+      const homeGlow = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, glowRadius);
       homeGlow.addColorStop(0,   `rgba(${r},${g},${b},${glowAlpha})`);
       homeGlow.addColorStop(0.5, `rgba(${r},${g},${b},${glowAlpha * 0.33})`);
       homeGlow.addColorStop(1,   `rgba(${r},${g},${b},0)`);
       ctx.beginPath();
-      ctx.arc(pt.x, pt.y, baseR + 7, 0, Math.PI*2);
+      ctx.arc(pt.x, pt.y, glowRadius, 0, Math.PI*2);
       ctx.fillStyle = homeGlow;
       ctx.fill();
       // Dimmed slightly if filtered out, but still visible
