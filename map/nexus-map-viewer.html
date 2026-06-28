@@ -722,7 +722,7 @@
         </div>
         <div class="filter-row">
           <label>Sector</label>
-          <input type="number" id="f-sector" placeholder="e.g. 47" min="1">
+          <input type="text" id="f-sector" placeholder="e.g. 15 or 15,25,33">
         </div>
       </div>
 
@@ -1132,7 +1132,7 @@ document.getElementById('btn-clear').addEventListener('click', () => {
 function getFilters() {
   return {
     arm:          document.getElementById('f-arm').value.trim().toUpperCase(),
-    sector:       parseInt(document.getElementById('f-sector').value) || null,
+    sector:       document.getElementById('f-sector').value.split(',').map(v => parseInt(v.trim())).filter(n => !isNaN(n) && n > 0),
     zone:         document.getElementById('f-zone').value,
     ptype:        document.getElementById('f-ptype').value,
     minSlots:     parseInt(document.getElementById('f-minslots').value) || 0,
@@ -1153,7 +1153,7 @@ function getFilters() {
 function systemPasses(s, f) {
   const parsed = parseSystemName(s.name);
   if (f.arm    && (!parsed || parsed.arm !== f.arm))               return false;
-  if (f.sector && (!parsed || parsed.sector !== f.sector))         return false;
+  if (f.sector.length && (!parsed || !f.sector.includes(parsed.sector))) return false;
   if (f.zone   && (s.securityZone || '').toLowerCase() !== f.zone) return false;
 
   // Colonized — system must have at least one colonized planet
@@ -1240,7 +1240,7 @@ function buildResultsList() {
 
   const f      = getFilters();
   const hasArm = !!f.arm;
-  const hasSec = !!f.sector;
+  const hasSec = f.sector.length > 0;
   const hasSel = !!selectedSystem;
   const homeTag = CONFIG.HOME_ALLIANCE.toUpperCase();
 
@@ -1260,7 +1260,7 @@ function buildResultsList() {
   } else if (hasSec && hasArm) {
     // Arm + sector filter active
     systems = filteredSystems.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    label   = `${f.arm}${f.sector}`;
+    label   = f.sector.length === 1 ? `${f.arm}${f.sector[0]}` : `${f.arm}[${f.sector.join(',')}]`;
     context = 'sector';
   } else if (hasArm) {
     // Arm filter only
@@ -2021,7 +2021,10 @@ function executeSearchItem(item) {
     searchState = { query: searchInput.value, type: 'system', results: [], idx: 0 };
   } else if (item.type === 'sector') {
     document.getElementById('f-arm').value    = item.data.arm;
-    document.getElementById('f-sector').value = item.data.sec;
+    // Append to existing comma-separated list or set fresh
+    const existingSecs = document.getElementById('f-sector').value.split(',').map(v => parseInt(v.trim())).filter(n => !isNaN(n) && n > 0);
+    if (!existingSecs.includes(item.data.sec)) existingSecs.push(item.data.sec);
+    document.getElementById('f-sector').value = existingSecs.join(',');
     applyFilters();
     const ss = allSystems.filter(s => { const p = parseSystemName(s.name); return p && p.arm === item.data.arm && p.sector === item.data.sec; });
     if (ss.length) {
