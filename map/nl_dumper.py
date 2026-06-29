@@ -448,9 +448,9 @@ def pull_sector_systems(session, systems_by_id, all_sectors,
                     delta_skipped = 0
                     for sys in pull_targets:
                         sys_id = sys['id']
-                        if sys_id in unchanged_ids:
+                        if sys_id in unchanged_ids and not PULL['all_planets']:
                             delta_skipped += 1
-                            continue   # cached planets+asteroidFields carry forward
+                            continue   # cached planets+asteroidFields carry forward (delta only)
                         p_data = get(session, f'/api/galaxy/systems/{sys_id}/planets',
                                      silent=True)
                         if p_data and sys_id in systems_by_id:
