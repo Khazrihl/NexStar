@@ -3,23 +3,23 @@ name: Galaxy dump
 # Runs nl_dumper.py against the Nexus Legacy API using a token stored as a
 # repository secret, then commits the refreshed map/nexus-map-clean.json back
 # to main if it changed. Two cadences:
-#   * 08:00 UTC daily (= 3 AM US Central, CDT) -> full --fresh rebuild
+#   * 08:00 UTC daily (= 3 AM US Central, CDT) -> full dump (all_planets=True)
 #   * every other hour on the hour            -> incremental delta merge
-#     (default run loads the committed map as a baseline and only re-fetches
-#      detail for systems whose summary changed).
+#     (loads committed map as baseline, only re-fetches systems whose summary
+#      changed since the last run).
 #
 # NOTE: GitHub cron is fixed-offset UTC and does NOT follow DST. 08:00 UTC is
 # 3 AM during US Central Daylight Time and 2 AM during Standard Time.
 
 on:
   schedule:
-    - cron: '0 8 * * *'          # 08:00 UTC (3 AM CT, CDT) — full fresh rebuild
+    - cron: '0 8 * * *'          # 08:00 UTC (3 AM CT, CDT) — full dump
     # Hourly delta is triggered from the VPS bot via workflow_dispatch
     # (GitHub high-frequency cron is unreliable); see GALAXY_DISPATCH_* in the bot.
   workflow_dispatch:
     inputs:
-      fresh:
-        description: 'Full fresh rebuild (--fresh) instead of incremental delta'
+      full:
+        description: 'Full dump (--full, all_planets=True) instead of incremental delta'
         type: boolean
         default: false
 
@@ -64,7 +64,7 @@ jobs:
         working-directory: map
         run: |
           set -euo pipefail
-          if [ "${{ github.event.schedule }}" = '0 8 * * *' ] || [ "${{ github.event.inputs.fresh }}" = 'true' ]; then
+          if [ "${{ github.event.schedule }}" = '0 8 * * *' ] || [ "${{ github.event.inputs.full }}" = 'true' ]; then
             echo "Full dump"
             python nl_dumper.py --full
           else
@@ -77,7 +77,7 @@ jobs:
           set -euo pipefail
           git config user.name  "nexstar-galaxy-bot[bot]"
           git config user.email "actions@users.noreply.github.com"
-          # Never commit the token file or intermediate progress checkpoint.
+          # Never commit the token file.
           rm -f map/nl_config.txt
           git add map/nexus-map-clean.json
           if git diff --cached --quiet -- map/nexus-map-clean.json; then
@@ -86,7 +86,7 @@ jobs:
           fi
           systems=$(jq -r '.meta.systemCount // 0' map/nexus-map-clean.json)
           captured=$(jq -r '.meta.capturedAt // "unknown"' map/nexus-map-clean.json)
-          if [ "${{ github.event.schedule }}" = '0 8 * * *' ] || [ "${{ github.event.inputs.fresh }}" = 'true' ]; then
+          if [ "${{ github.event.schedule }}" = '0 8 * * *' ] || [ "${{ github.event.inputs.full }}" = 'true' ]; then
             kind="full"
           else
             kind="delta"
