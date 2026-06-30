@@ -3,7 +3,7 @@ name: Galaxy dump
 # Runs nl_dumper.py against the Nexus Legacy API using a token stored as a
 # repository secret, then commits the refreshed map/nexus-map-clean.json back
 # to main if it changed. Two cadences:
-#   * 08:00 UTC daily (= 3 AM US Central, CDT) -> full dump (all_planets=True)
+#   * 07:00 UTC daily (= 2 AM US Central, CDT) -> full dump (all_planets=True)
 #   * every other hour on the hour            -> incremental delta merge
 #     (loads committed map as baseline, only re-fetches systems whose summary
 #      changed since the last run).
@@ -13,7 +13,7 @@ name: Galaxy dump
 
 on:
   schedule:
-    - cron: '0 7 * * *'          # 08:00 UTC (3 AM CT, CDT) — full dump
+    - cron: '0 7 * * *'          # 07:00 UTC (2 AM CT, CDT) — full dump
     # Hourly delta is triggered from the VPS bot via workflow_dispatch
     # (GitHub high-frequency cron is unreliable); see GALAXY_DISPATCH_* in the bot.
   workflow_dispatch:
