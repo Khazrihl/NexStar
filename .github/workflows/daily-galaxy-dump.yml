@@ -8,8 +8,8 @@ name: Galaxy dump
 #     (loads committed map as baseline, only re-fetches systems whose summary
 #      changed since the last run).
 #
-# NOTE: GitHub cron is fixed-offset UTC and does NOT follow DST. 08:00 UTC is
-# 3 AM during US Central Daylight Time and 2 AM during Standard Time.
+# NOTE: GitHub cron is fixed-offset UTC and does NOT follow DST. 07:00 UTC is
+# 2 AM during US Central Daylight Time and 1 AM during Standard Time.
 
 on:
   schedule:
@@ -64,7 +64,7 @@ jobs:
         working-directory: map
         run: |
           set -euo pipefail
-          if [ "${{ github.event.schedule }}" = '0 8 * * *' ] || [ "${{ github.event.inputs.full }}" = 'true' ]; then
+          if [ "${{ github.event.schedule }}" = '0 7 * * *' ] || [ "${{ github.event.inputs.full }}" = 'true' ]; then
             echo "Full dump"
             python nl_dumper.py --full
           else
@@ -86,7 +86,7 @@ jobs:
           fi
           systems=$(jq -r '.meta.systemCount // 0' map/nexus-map-clean.json)
           captured=$(jq -r '.meta.capturedAt // "unknown"' map/nexus-map-clean.json)
-          if [ "${{ github.event.schedule }}" = '0 8 * * *' ] || [ "${{ github.event.inputs.full }}" = 'true' ]; then
+          if [ "${{ github.event.schedule }}" = '0 7 * * *' ] || [ "${{ github.event.inputs.full }}" = 'true' ]; then
             kind="full"
           else
             kind="delta"
