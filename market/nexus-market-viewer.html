@@ -354,9 +354,9 @@ tr:hover td { background: var(--bg3); }
   <span class="npc-rate estimated">Cryo Ice ~×8 est.</span>
   <span class="npc-rate estimated">Plasma Core ~×12 est.</span>
   <span class="npc-rate estimated">Bio Extract ~×15 est.</span>
-  <span class="npc-rate estimated">Dark Matter ~×20 est.</span>
-  <span class="npc-rate estimated">Antimatter ~×25 est.</span>
-  <span class="npc-rate estimated">Quantum Dust ~×30 est.</span>
+  <span class="npc-rate estimated">Quantum Dust ~×20 est.</span>
+  <span class="npc-rate estimated">Dark Matter ~×30 est.</span>
+  <span class="npc-rate estimated">Antimatter ~×35 est.</span>
 </div>
 
 <div id="alliance-bar" style="display:none;background:#0d1118;border-bottom:1px solid #1a2535;padding:6px 20px;font-size:11px;color:#5a6a7a;display:none;align-items:center;gap:16px">
@@ -432,15 +432,15 @@ const NPC = {
   cryo_ice:     { rate: 8,    estimated: true  },
   plasma_core:  { rate: 12,   estimated: true  },
   bio_extract:  { rate: 15,   estimated: true  },
-  dark_matter:  { rate: 20,   estimated: true  },
-  antimatter:   { rate: 25,   estimated: true  },
-  quantum_dust: { rate: 30,   estimated: true  },
+  quantum_dust: { rate: 20,   estimated: true  },
+  dark_matter:  { rate: 30,   estimated: true  },
+  antimatter:   { rate: 35,   estimated: true  },
 };
 
 const RES_LABEL = {
   ore: 'Ore', silicates: 'Silicates', hydrogen: 'Hydrogen', alloys: 'Alloys',
   cryo_ice: 'Cryo Ice', plasma_core: 'Plasma Core', bio_extract: 'Bio Extract',
-  dark_matter: 'Dark Matter', antimatter: 'Antimatter', quantum_dust: 'Quantum Dust',
+  quantum_dust: 'Quantum Dust', dark_matter: 'Dark Matter', antimatter: 'Antimatter',
 };
 
 const BASE_URL = 'http://localhost:8765';
