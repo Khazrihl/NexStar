@@ -1181,9 +1181,12 @@ function systemPasses(s, f) {
     if (!s.planets.some(p => p.userId && !p.ownerAllianceTag)) return false;
   }
 
-  // Alliance tag(s) — comma-separated, any match passes
+  // Alliance tag(s) — comma-separated, any match passes.
+  // Matches against both planet colonies AND station controllers.
   if (f.alliance.length) {
-    return s.planets.some(p => f.alliance.includes((p.ownerAllianceTag || '').toUpperCase()));
+    const planetMatch  = s.planets.some(p => f.alliance.includes((p.ownerAllianceTag || '').toUpperCase()));
+    const stationMatch = (s.stations || []).some(st => f.alliance.includes((st.ownerAllianceTag || '').toUpperCase()));
+    return planetMatch || stationMatch;
   }
 
   const ptypeLower = f.ptype.toLowerCase();
@@ -1463,7 +1466,8 @@ function drawMap() {
 
     const zone     = (s.securityZone || 'null').toLowerCase();
     const inFilter = !hasFilters || filteredSet.has(s.id);
-    const isHome   = s.planets.some(p => (p.ownerAllianceTag || '').toUpperCase() === homeTag);
+    const isHome   = s.planets.some(p => (p.ownerAllianceTag || '').toUpperCase() === homeTag)
+                  || (s.stations || []).some(st => (st.ownerAllianceTag || '').toUpperCase() === homeTag);
     const isSelected = selectedSystem && selectedSystem.id === s.id;
 
     // Home alliance is always fully visible regardless of filters
