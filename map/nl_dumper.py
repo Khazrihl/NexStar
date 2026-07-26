@@ -53,10 +53,11 @@ BASE_URL    = 'https://s0.nexuslegacy.space'
 CONFIG_FILE = 'nl_config.txt'
 OUTPUT_FILE = 'nexus-map-clean.json'
 
-# Delay between requests in seconds. The API rate limit is 360 req/min
-# (6 req/s); 0.3s = 3.3 req/s leaves comfortable headroom. Bump if you see
-# 429 errors.
-REQUEST_DELAY = 0.3
+# Delay between requests in seconds. Rimo's published rate limits:
+#   system-details: 30/10s (burst), 180/min (sustained)
+#   fuel-estimate:  40/10s, 120/min
+# 0.35s gives ~2.85 req/s, safely under the 30/10s burst ceiling to avoid 429s.
+REQUEST_DELAY = 0.35
 
 # ── Load config ───────────────────────────────────────────────────────────────
 def load_config():
@@ -126,8 +127,18 @@ def get(session, path, retries=3, silent=False):
                     print(f'  404: {path}')
                 return None
             elif r.status_code == 429:
-                wait = 15 * (attempt + 1)
-                print(f'  Rate limited — waiting {wait}s...')
+                # Respect Retry-After header per Rimo's tool developer guidance.
+                # Falls back to a short fixed wait if the header is missing.
+                scope = r.headers.get('X-RateLimit-Scope', '?')
+                retry_after = r.headers.get('Retry-After')
+                if retry_after:
+                    try:
+                        wait = int(float(retry_after)) + 1  # +1s safety margin
+                    except (ValueError, TypeError):
+                        wait = 5
+                else:
+                    wait = 5
+                print(f'  Rate limited (scope={scope}) — waiting {wait}s (Retry-After: {retry_after})...')
                 time.sleep(wait)
             else:
                 if not silent:
